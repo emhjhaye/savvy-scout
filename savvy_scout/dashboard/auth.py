@@ -25,7 +25,9 @@ class User(UserMixin):
         self.id = str(row["id"])
         self.username = row["username"]
         self.display_name = row["display_name"]
+        self.email = row["email"]
         self.is_victoria = bool(row["is_victoria"])
+        self.is_admin = bool(row["is_admin"])
 
 
 def get_db() -> sqlite3.Connection:
@@ -44,14 +46,20 @@ def load_user(user_id: str):
 def login():
     error = None
     if request.method == "POST":
+        # The four original accounts (mark/kanvesh/hammad/victoria) log in by
+        # username, same as before; accounts added later via the admin
+        # screen log in by email (2026-08-08) -- one input matches either
+        # column so both keep working without forcing a migration on the
+        # original accounts.
+        identifier = request.form.get("username", "").strip()
         row = get_db().execute(
-            "SELECT * FROM users WHERE username = ?", (request.form.get("username", ""),)
+            "SELECT * FROM users WHERE username = ? OR email = ?", (identifier, identifier)
         ).fetchone()
         if row and check_password_hash(row["password_hash"], request.form.get("password", "")):
             login_user(User(row))
             return redirect(url_for("queues.index"))
-        error = "Invalid username or password"
-    
+        error = "Invalid email/username or password"
+
     return render_template("login.html", error=error)
 
 

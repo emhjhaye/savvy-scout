@@ -94,7 +94,7 @@
     <p class="subtitle">Access the triage and approval dashboard.</p>
 
     <form method="post">
-      <label for="username">Username</label>
+      <label for="username">Email or Username</label>
       <input type="text" id="username" name="username" value="{{ request.form.username or '' }}" required autocomplete="username">
 
       <label for="password">Password</label>
@@ -106,20 +106,6 @@
 
       <button type="submit" class="btn-signin">Sign in</button>
     </form>
-
-    <div class="quick-access">
-      <div class="quick-label">⚡ Quick Access (Demo)</div>
-      <div class="quick-grid">
-        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='mark';document.getElementById('password').value='12345'">Mark</button>
-        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='kanvesh';document.getElementById('password').value='12345'">Kanvesh</button>
-        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='hammad';document.getElementById('password').value='12345'">Hammad</button>
-        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='victoria';document.getElementById('password').value='12345'">Victoria</button>
-      </div>
-      <div class="accounts-info">
-        <strong>Mark, Kanvesh, Hammad</strong> — Sector Owner &nbsp;|&nbsp; <strong>Victoria</strong> — Bid Director
-        <div class="pwd">All passwords: <strong>12345</strong></div>
-      </div>
-    </div>
   </div>
 </body>
 </html>

@@ -4,13 +4,16 @@ doesn't name who besides Victoria has this authority, and the references name
 Kanvesh as the process owner). A bare-bones version now; SPEC.md C5 (source
 tier management, email whitelist) completes it later."""
 
+import secrets
 from datetime import datetime, timezone
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from werkzeug.security import generate_password_hash
 
 from savvy_scout.dashboard.auth import get_db
 from savvy_scout.logging_util import log_audit
+from savvy_scout.notifications import NotificationError, send_account_invite_email
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -48,6 +51,13 @@ AUTO_MANAGED_COLUMNS = {"id", "updated_at", "updated_by", "created_at"}
 
 def _has_correction_authority() -> bool:
     return current_user.display_name in ("Victoria", "Kanvesh")
+
+
+def _is_super_admin() -> bool:
+    """Account-management authority: deliberately Mark (is_admin), separate
+    from Victoria/Kanvesh's rule-correction authority above (2026-08-08,
+    explicit request -- the two roles are not the same person)."""
+    return bool(current_user.is_admin)
 
 
 def _table_schema(conn, table_name: str) -> list[dict]:
@@ -225,3 +235,142 @@ def delete_row(table_name, row_id):
     _record_correction(conn, table_name, f"Deleted row {row_id}: {description}", reason)
     flash("Row deleted.")
     return redirect(url_for("admin.index"))
+
+
+def _app_url() -> str:
+    return (current_app.config.get("SAVVY_SCOUT_APP_BASE_URL") or request.host_url).rstrip("/")
+
+
+def _invite_or_reset(email: str, display_name: str, username: str) -> tuple[str, str]:
+    """Generates a temp password, sends the invite/reset email, and returns
+    (flash_message, flash_category) -- SMTP isn't configured in every
+    environment yet, so a send failure still leaves the account usable and
+    surfaces the temp password for the admin to hand over manually instead
+    of silently failing the whole action."""
+    temp_password = secrets.token_urlsafe(9)
+    app_url = _app_url()
+    try:
+        send_account_invite_email(email, display_name, app_url, email, temp_password)
+        message = f"Invited {display_name} at {email} -- they'll receive the app link and a temporary password by email."
+        category = "success"
+    except NotificationError as exc:
+        message = (
+            f"Account saved, but the invite email couldn't be sent ({exc}). "
+            f"Share this manually -- link: {app_url}, email: {email}, temporary password: {temp_password}"
+        )
+        category = "error"
+    return temp_password, (message, category)
+
+
+@admin_bp.route("/users")
+@login_required
+def users_index():
+    if not _is_super_admin():
+        flash("Only the admin account can manage users.", "error")
+        return redirect(url_for("queues.index"))
+    conn = get_db()
+    users = conn.execute("SELECT * FROM users ORDER BY display_name").fetchall()
+    return render_template("admin_users.html", users=users)
+
+
+@admin_bp.route("/users/add", methods=["POST"])
+@login_required
+def add_user():
+    if not _is_super_admin():
+        flash("Only the admin account can manage users.", "error")
+        return redirect(url_for("queues.index"))
+
+    display_name = request.form.get("display_name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    is_victoria = request.form.get("is_victoria") == "on"
+
+    if not display_name or not email:
+        flash("Display name and email are both required.", "error")
+        return redirect(url_for("admin.users_index"))
+    if "@" not in email:
+        flash(f"'{email}' doesn't look like a valid email address.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    # username is the login fallback for the four original accounts; new
+    # accounts log in by email, but every row still needs a unique username
+    # (schema constraint) -- derive one from the email's local part.
+    username = email.split("@", 1)[0]
+
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT 1 FROM users WHERE email = ? OR username = ? OR display_name = ?",
+        (email, username, display_name),
+    ).fetchone()
+    if existing:
+        flash(f"A user with that email, username, or display name already exists.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    temp_password, (message, category) = _invite_or_reset(email, display_name, username)
+    conn.execute(
+        "INSERT INTO users (username, password_hash, display_name, email, is_victoria, is_admin, created_at) "
+        "VALUES (?, ?, ?, ?, ?, 0, ?)",
+        (
+            username,
+            generate_password_hash(temp_password),
+            display_name,
+            email,
+            int(is_victoria),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    conn.commit()
+    log_audit(conn, "user", email, "account_created", current_user.display_name, f"Added {display_name} ({email})")
+
+    flash(message, category)
+    return redirect(url_for("admin.users_index"))
+
+
+@admin_bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
+@login_required
+def reset_user_password(user_id):
+    if not _is_super_admin():
+        flash("Only the admin account can manage users.", "error")
+        return redirect(url_for("queues.index"))
+
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        flash("User not found.", "error")
+        return redirect(url_for("admin.users_index"))
+    if not row["email"]:
+        flash(f"{row['display_name']} has no email on file -- reset the password directly in the database instead.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    temp_password, (message, category) = _invite_or_reset(row["email"], row["display_name"], row["username"])
+    conn.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?", (generate_password_hash(temp_password), user_id)
+    )
+    conn.commit()
+    log_audit(conn, "user", row["email"], "password_reset", current_user.display_name, f"Reset password for {row['display_name']}")
+
+    flash(message, category)
+    return redirect(url_for("admin.users_index"))
+
+
+@admin_bp.route("/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+def delete_user(user_id):
+    if not _is_super_admin():
+        flash("Only the admin account can manage users.", "error")
+        return redirect(url_for("queues.index"))
+
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        flash("User not found.", "error")
+        return redirect(url_for("admin.users_index"))
+    if str(row["id"]) == current_user.id:
+        flash("You can't delete your own account while logged in as it.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    log_audit(conn, "user", row["email"] or row["username"], "account_deleted", current_user.display_name, f"Removed {row['display_name']}")
+
+    flash(f"Removed {row['display_name']}'s account.")
+    return redirect(url_for("admin.users_index"))

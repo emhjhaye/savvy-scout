@@ -24,6 +24,7 @@ def create_app(settings: Settings) -> Flask:
     app = Flask(__name__, template_folder=template_dir)
     app.config["SAVVY_SCOUT_DB_PATH"] = settings.db_path
     app.config["SAVVY_SCOUT_SETTINGS"] = settings
+    app.config["SAVVY_SCOUT_APP_BASE_URL"] = os.environ.get("SAVVY_SCOUT_APP_BASE_URL") or None
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.secret_key = settings.flask_secret_key or "dev-only-insecure-key-set-FLASK_SECRET_KEY-in-.env"
     # Render sets RENDER=true in every runtime environment there -- only
@@ -67,19 +68,21 @@ def create_app(settings: Settings) -> Flask:
         count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         
         if count == 0:
-            # Create test users
+            # Create test users. Mark is the account-management admin
+            # (is_admin), separate from Victoria/Kanvesh's rule-correction
+            # authority (is_victoria) -- see dashboard/routes/admin.py.
             password_hash = generate_password_hash('12345')
             users = [
-                ('mark', 'Mark', False),
-                ('kanvesh', 'Kanvesh', False),
-                ('hammad', 'Hammad', False),
-                ('victoria', 'Victoria', True),
+                ('mark', 'Mark', False, True),
+                ('kanvesh', 'Kanvesh', False, False),
+                ('hammad', 'Hammad', False, False),
+                ('victoria', 'Victoria', True, False),
             ]
-            
-            for username, display_name, is_victoria in users:
+
+            for username, display_name, is_victoria, is_admin in users:
                 conn.execute(
-                    "INSERT INTO users (username, password_hash, display_name, is_victoria, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (username, password_hash, display_name, int(is_victoria), datetime.now(timezone.utc).isoformat())
+                    "INSERT INTO users (username, password_hash, display_name, is_victoria, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (username, password_hash, display_name, int(is_victoria), int(is_admin), datetime.now(timezone.utc).isoformat())
                 )
             
             conn.commit()

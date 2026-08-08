@@ -99,6 +99,20 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         col_type = "INTEGER" if col == "above_threshold" else "TEXT"
         conn.execute(f"ALTER TABLE notices ADD COLUMN {col} {col_type}")
 
+    # Account management (2026-08-08): email column for login-by-email and
+    # invite emails, is_admin for the new account-management screen (Mark,
+    # deliberately separate from is_victoria's existing rule-correction
+    # authority). Existing seeded accounts keep username login working since
+    # email is nullable; 'mark' is granted is_admin on the migration that
+    # actually adds the column, not unconditionally, so a superadmin flag set
+    # by hand later isn't clobbered by a later boot.
+    user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "email" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if "is_admin" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        conn.execute("UPDATE users SET is_admin = 1 WHERE username = 'mark'")
+
     if missing_additional_cols:
         import json as _json
 

@@ -271,14 +271,22 @@ CREATE TABLE IF NOT EXISTS config_sources (
     updated_by TEXT NOT NULL
 );
 
--- Phase B: dashboard accounts. Four named users, individual logins, no
--- shared accounts (SPEC.md B1).
+-- Phase B: dashboard accounts, individual logins, no shared accounts
+-- (SPEC.md B1). is_victoria carries the existing rule-correction authority
+-- (Victoria/Kanvesh, see dashboard/routes/admin.py); is_admin is a separate,
+-- narrower authority for the account-management screen itself (2026-08-08,
+-- deliberately Mark, not Victoria -- see dashboard/routes/admin.py
+-- _is_super_admin). email is nullable so the four original seeded accounts
+-- (mark/kanvesh/hammad/victoria) keep working via username login without
+-- needing a real address backfilled.
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     display_name TEXT NOT NULL UNIQUE, -- Mark, Kanvesh, Hammad, Victoria
+    email TEXT,
     is_victoria INTEGER NOT NULL DEFAULT 0,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
