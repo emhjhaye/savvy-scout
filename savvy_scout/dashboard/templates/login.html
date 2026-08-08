@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — Savvy Scout</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/bidsavvy-mark.png') }}">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Poppins:wght@600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #041226;
+      --surface: #0B1F3A;
+      --primary: #AF1F23;
+      --primary-dark: #8A191D;
+      --text: #E5E7EB;
+      --text-muted: #9AA3AD;
+      --border: rgba(255,255,255,0.1);
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-heading: 'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    body {
+      font-family: var(--font);
+      background: linear-gradient(135deg, #041226 0%, #0B1F3A 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 44px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 24px 48px rgba(0,0,0,0.35);
+    }
+    .brand { text-align: center; margin-bottom: 32px; }
+    .brand .mark-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: #FFFFFF; border-radius: 8px; padding: 6px 8px; margin-bottom: 10px;
+    }
+    .brand-text { font-family: var(--font-heading); font-size: 22px; font-weight: 700; letter-spacing: -0.5px; line-height: 1; color: #FFFFFF; }
+    .brand-text .accent { color: var(--primary); }
+    .brand-sub { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-muted); font-weight: 600; margin-top: 6px; }
+    h1 { font-family: var(--font-heading); font-size: 20px; font-weight: 700; color: #FFFFFF; text-align: center; margin-bottom: 6px; }
+    .subtitle { font-size: 13px; color: var(--text-muted); text-align: center; margin-bottom: 28px; }
+    label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 16px; }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 11px 14px; font-size: 14px;
+      border: 1px solid var(--border); border-radius: 8px;
+      font-family: inherit; color: var(--text); background: rgba(255,255,255,0.03);
+      transition: all 0.2s;
+    }
+    input:focus { outline: none; border-color: var(--primary); background: rgba(255,255,255,0.05); box-shadow: 0 0 0 3px rgba(175,31,35,0.18); }
+    .error-msg {
+      background: rgba(255,77,79,0.1); color: #FF8A8C; padding: 10px 14px;
+      border-radius: 6px; border-left: 4px solid var(--primary);
+      font-size: 13px; font-weight: 500; margin: 16px 0 0;
+    }
+    .btn-signin {
+      width: 100%; padding: 12px; margin-top: 24px;
+      font-size: 14px; font-weight: 700; border: none; border-radius: 8px;
+      background: var(--primary); color: white; cursor: pointer;
+      font-family: inherit; letter-spacing: 0.5px; text-transform: uppercase;
+      transition: all 0.2s;
+    }
+    .btn-signin:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(175,31,35,0.35); }
+    .quick-access { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
+    .quick-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .quick-btn {
+      padding: 9px; border: 1px solid var(--border); border-radius: 7px;
+      background: rgba(255,255,255,0.02); color: var(--text); font-size: 12px; font-weight: 600;
+      cursor: pointer; font-family: inherit; transition: all 0.15s;
+    }
+    .quick-btn:hover { border-color: var(--primary); color: #FF8A8C; background: rgba(175,31,35,0.08); }
+    .accounts-info { margin-top: 20px; padding: 12px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 12px; color: var(--text-muted); }
+    .accounts-info strong { color: var(--text); }
+    .accounts-info .pwd { color: var(--text-muted); margin-top: 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand">
+      <div class="mark-badge"><img src="{{ url_for('static', filename='img/bidsavvy-mark.png') }}" alt="Bid Savvy" height="26"></div>
+      <div class="brand-text">Bid Savvy<span class="accent"> Scout</span></div>
+      <div class="brand-sub">Procurement Intelligence</div>
+    </div>
+
+    <h1>Sign in</h1>
+    <p class="subtitle">Access the triage and approval dashboard.</p>
+
+    <form method="post">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" value="{{ request.form.username or '' }}" required autocomplete="username">
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+
+      {% if error %}
+      <div class="error-msg">{{ error }}</div>
+      {% endif %}
+
+      <button type="submit" class="btn-signin">Sign in</button>
+    </form>
+
+    <div class="quick-access">
+      <div class="quick-label">⚡ Quick Access (Demo)</div>
+      <div class="quick-grid">
+        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='mark';document.getElementById('password').value='12345'">Mark</button>
+        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='kanvesh';document.getElementById('password').value='12345'">Kanvesh</button>
+        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='hammad';document.getElementById('password').value='12345'">Hammad</button>
+        <button class="quick-btn" type="button" onclick="document.getElementById('username').value='victoria';document.getElementById('password').value='12345'">Victoria</button>
+      </div>
+      <div class="accounts-info">
+        <strong>Mark, Kanvesh, Hammad</strong> — Sector Owner &nbsp;|&nbsp; <strong>Victoria</strong> — Bid Director
+        <div class="pwd">All passwords: <strong>12345</strong></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,173 @@
+from datetime import datetime, timedelta, timezone
+import re
+
+from werkzeug.security import generate_password_hash
+
+from savvy_scout.config import Settings
+from savvy_scout.dashboard import create_app
+from savvy_scout.db.connection import get_connection, init_db
+from savvy_scout.db.seed_config import seed_all
+
+
+def _insert_notice(
+    conn, ref: str, first_seen_at: str, sector: str | None,
+    uk_stage: str = "UK3", cpv_primary: str | None = "72200000",
+) -> None:
+    """Defaults to an in-scope notice (UK3 stage, CPV 72200000, which is
+    within every sector's config_sector_cpv_scope) so callers only need to
+    override uk_stage/cpv_primary/sector to test the out-of-scope cases."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO notices (
+            ref, ocid, title, buyer, source, notice_type, uk_stage, status, sector, owner,
+            indicative_value, cpv_primary, cpv_primary_inferred, cpv_additional, deadline,
+            text_blob, tender_status, lot_statuses, tender_period_end, pme_due_date,
+            future_notice_date, contract_end_date, is_award, raw_json, first_seen_at,
+            last_swept_at, created_at, updated_at
+        ) VALUES (
+            ?, NULL, ?, ?, ?, NULL, ?, 'NEW', ?, NULL,
+            NULL, ?, 0, NULL, NULL,
+            '', NULL, NULL, NULL, NULL,
+            NULL, NULL, 0, '{}', ?,
+            ?, ?, ?
+        )
+        """,
+        (
+            ref,
+            f"Title {ref}",
+            f"Buyer {ref}",
+            "Find a Tender",
+            uk_stage,
+            sector,
+            cpv_primary,
+            first_seen_at,
+            now,
+            now,
+            now,
+        ),
+    )
+
+
+def _insert_triage_run(conn, ref: str, outcome: str) -> None:
+    notice_id = conn.execute("SELECT id FROM notices WHERE ref = ?", (ref,)).fetchone()[0]
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO triage_runs (
+            notice_id, headline_gate, headline_outcome, headline_reason, evaluated_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (notice_id, "GATE", outcome, f"{outcome} outcome", now),
+    )
+
+
+def _logged_in_client(app, username):
+    client = app.test_client()
+    client.post("/login", data={"username": username, "password": "testpass"})
+    return client
+
+
+def _db(app):
+    return get_connection(app.config["SAVVY_SCOUT_DB_PATH"])
+
+
+def test_overview_shows_scouting_report(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    setup_conn = get_connection(db_path)
+    init_db(setup_conn)
+    seed_all(setup_conn)
+    for username, display_name in [("victoria", "Victoria"), ("mark", "Mark")]:
+        setup_conn.execute(
+            "INSERT INTO users (username, password_hash, display_name, is_victoria, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                username,
+                generate_password_hash("testpass"),
+                display_name,
+                int(display_name == "Victoria"),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+    setup_conn.commit()
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    year_start = now.replace(month=1, day=1, hour=0, minute=0, microsecond=0)
+
+    # In-scope notices (real sector, UK1-4 stage, CPV within that sector's
+    # configured scope) -- these should all count towards the Overview.
+    notices = [
+        ("REF-TODAY", today_start + timedelta(hours=2), "Fintech"),
+        ("REF-WEEK", week_start + timedelta(hours=3), "Energy"),
+        ("REF-MONTH", month_start + timedelta(days=3, hours=1), "Rail and Transport"),
+        ("REF-YTD", year_start + timedelta(days=10, hours=1), "NHS and Healthcare"),
+        ("REF-LASTYEAR", now - timedelta(days=400), "Central and Local Government"),
+    ]
+    for ref, dt, sector in notices:
+        _insert_notice(setup_conn, ref, dt.isoformat(), sector)
+    for ref, outcome in [
+        ("REF-TODAY", "PASS"),
+        ("REF-WEEK", "FLAG"),
+        ("REF-MONTH", "MAYBE"),
+        ("REF-YTD", "FAIL"),
+    ]:
+        _insert_triage_run(setup_conn, ref, outcome)
+
+    # Out-of-scope notices (2026-07-30 filter): none of these should ever
+    # show up in the Overview's counts or sector breakdown.
+    _insert_notice(setup_conn, "REF-NO-SECTOR", today_start.isoformat(), None)
+    _insert_notice(setup_conn, "REF-WRONG-CPV", today_start.isoformat(), "Fintech", cpv_primary="45000000")
+    _insert_notice(setup_conn, "REF-UK5", today_start.isoformat(), "Fintech", uk_stage="UK5")
+    setup_conn.commit()
+    setup_conn.close()
+
+    settings = Settings(
+        db_path=db_path,
+        lookback_days=7,
+        find_a_tender_base_url="",
+        contracts_finder_base_url="",
+        flask_secret_key="test-key",
+        ms_graph_tenant_id=None,
+        ms_graph_client_id=None,
+        ms_graph_client_secret=None,
+        ms_graph_sender_upn=None,
+    )
+    app = create_app(settings)
+    app.config["TESTING"] = True
+    client = _logged_in_client(app, "mark")
+
+    response = client.get("/")
+    html = response.get_data(as_text=True)
+
+    expected_ytd = sum(1 for _, dt, _ in notices if dt >= year_start)
+    expected_month = sum(1 for _, dt, _ in notices if dt >= month_start)
+    expected_week = sum(1 for _, dt, _ in notices if dt >= week_start)
+    expected_today = sum(1 for _, dt, _ in notices if dt >= today_start)
+
+    assert "Scouting report" in html
+    assert re.search(rf'<div class="stat-value">{len(notices)}</div>\s*<div class="stat-label">Total scouted</div>', html)
+    assert re.search(rf'<div class="stat-value">{expected_ytd}</div>\s*<div class="stat-label">Scouted YTD</div>', html)
+    assert re.search(rf'<div class="stat-value">{expected_month}</div>\s*<div class="stat-label">This Month</div>', html)
+    assert re.search(rf'<div class="stat-value">{expected_week}</div>\s*<div class="stat-label">This Week</div>', html)
+    assert re.search(rf'<div class="stat-value">{expected_today}</div>\s*<div class="stat-label">Today</div>', html)
+    assert "Fintech" in html
+    assert "Energy" in html
+    assert "Rail and Transport" in html
+    assert "NHS and Healthcare" in html
+    # Out-of-scope notices (no sector, wrong CPV, UK5 stage) must never
+    # inflate "Total scouted" -- proven by expected_* above only counting
+    # the 5 in-scope `notices`, not the 3 extra out-of-scope ones inserted.
+    # No-sector notices no longer get their own "UNVERIFIED" row at all: 5
+    # real sectors + 1 TOTAL row, not a 7th UNVERIFIED row.
+    assert html.count('class="sector-cell"') == 6
+    assert "Seen today" in html
+    assert "Seen yesterday" in html
+    assert "Swept today" in html
+    assert "Swept yesterday" in html
+    assert "PASS" in html
+    assert "FLAG" in html
+    assert "MAYBE" in html
+    assert "FAIL" in html

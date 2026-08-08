@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Dashboard</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    .app { display: flex; min-height: 100vh; }
+    .logo { font-family: var(--font-heading); font-weight: 700; color: var(--brand-accent); margin-bottom: 18px; }
+    .main { flex: 1; padding: 32px; }
+    
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    
+    .header-left h2 { margin: 0; font-size: 28px; }
+    .header-left .subheading { color: var(--muted); font-size: 14px; margin-top: 4px; }
+    
+    .stats { display: flex; gap: 16px; }
+    .stat-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 16px 20px;
+      text-align: center;
+      min-width: 140px;
+    }
+    .stat-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+    .stat-value { font-size: 24px; font-weight: 700; color: var(--brand-accent); }
+    .stat-value.neutral { color: var(--white); }
+    
+    /* Tabs */
+    .tabs { display: flex; gap: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 24px; }
+    .tab { 
+      padding: 12px 0; 
+      border-bottom: 2px solid transparent; 
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 500;
+      transition: all 0.2s;
+      font-size: 14px;
+      position: relative;
+    }
+    .tab:hover { color: var(--white); }
+    .tab.active { 
+      color: var(--white);
+      border-bottom-color: var(--brand-accent);
+    }
+    .tab-badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 8px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .tab.active .tab-badge { background: var(--brand-accent); color: #fff; }
+    
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* Queue Container */
+    .queue { display: flex; flex-direction: column; gap: 12px; }
+    
+    /* Queue Item */
+    .queue-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: center;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .queue-item:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(255,255,255,0.12);
+    }
+    
+    .queue-item-content {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .queue-item-ref {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    
+    .queue-item-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--white);
+    }
+    
+    .queue-item-meta {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    
+    .queue-item-status {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .status-pass { background: rgba(0,191,166,0.2); color: #00BFA6; }
+    .status-flag { background: rgba(255,180,122,0.2); color: #FFB47A; }
+    .status-fail { background: rgba(255,77,79,0.2); color: #FF4D4F; }
+    
+    .queue-item-action {
+      color: var(--brand-accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    .queue-item-action:hover { opacity: 0.7; }
+    
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    
+    /* Right Sidebar */
+    .sidebar-right {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .sidebar-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .sidebar-card h3 { margin: 0 0 16px 0; font-size: 14px; }
+    
+    .action-button {
+      width: 100%;
+      padding: 10px 16px;
+      background: var(--brand-accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    .action-button:hover { opacity: 0.9; }
+    
+    .sidebar-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 13px;
+    }
+    .sidebar-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .sidebar-list li:last-child { border-bottom: none; }
+    .sidebar-list a {
+      color: var(--brand-accent);
+      text-decoration: none;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .main-content { display: grid; grid-template-columns: 1fr 320px; gap: 32px; }
+    
+    @media (max-width: 1200px) {
+      .main-content { grid-template-columns: 1fr; }
+      .stats { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="logo">Savvy Scout</div>
+      <ul class="nav">
+        <li class="active"><a href="#">Dashboard</a></li>
+        <li><a href="escalation-queue.html">Escalations</a></li>
+        <li><a href="pipeline.html">Pipeline</a></li>
+        <li><a href="admin.html">Admin</a></li>
+      </ul>
+      <div style="margin-top:20px;color:var(--muted);font-size:13px">Logged in as <strong>Mark</strong></div>
+    </aside>
+
+    <main class="main">
+      <div class="header-section">
+        <div class="header-left">
+          <h2>Your Queue</h2>
+          <div class="subheading">Phase 1 & 2 notices awaiting your review and approval</div>
+        </div>
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Win Rate</div>
+            <div class="stat-value">70%+</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">On-time</div>
+            <div class="stat-value neutral">100%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Avg Days</div>
+            <div class="stat-value neutral">2.1</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <section>
+          <div class="tabs">
+            <div class="tab active" onclick="switchTab(event, 'new')">
+              New (Phase 1)
+              <span class="tab-badge">12</span>
+            </div>
+            <div class="tab" onclick="switchTab(event, 'phase2')">
+              In Review (Phase 2)
+              <span class="tab-badge">5</span>
+            </div>
+            <div class="tab" onclick="switchTab(event, 'awaiting')">
+              Awaiting Approval
+              <span class="tab-badge">3</span>
+            </div>
+            <div class="tab" onclick="switchTab(event, 'pipeline')">
+              Pipeline
+              <span class="tab-badge">28</span>
+            </div>
+          </div>
+
+          <!-- Tab: New (Phase 1) -->
+          <div id="new" class="tab-content active">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div style="font-weight: 500; color: var(--muted);">Sorted by deadline (nearest first)</div>
+              <button style="background: var(--brand-accent); color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;">⟳ Sweep Now</button>
+            </div>
+            
+            <div class="queue">
+              <div class="queue-item" onclick="window.location='notice-detail--phase1.html'">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066188</div>
+                  <div class="queue-item-title">Cloud Migration: Modernising Council Digital Services Across 15 Sites</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: City of London Corporation</span>
+                    <span>Value: £1.2M–£1.8M</span>
+                    <span>Deadline: 2026-08-15</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">PASS</span>
+                  <a href="notice-detail--phase1.html" class="queue-item-action">Review →</a>
+                </div>
+              </div>
+
+              <div class="queue-item">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066189</div>
+                  <div class="queue-item-title">Office Refurbishment Programme — Northern Facilities Hub</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: NHS Northern Trust</span>
+                    <span>Value: £500K–£800K</span>
+                    <span>Deadline: 2026-08-22</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-flag">FLAG</span>
+                  <a href="#" class="queue-item-action">Review →</a>
+                </div>
+              </div>
+
+              <div class="queue-item">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066190</div>
+                  <div class="queue-item-title">Healthcare IT Infrastructure Upgrade — NHS Trust</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: Midlands NHS Trust</span>
+                    <span>Value: UNVERIFIED</span>
+                    <span>Deadline: 2026-08-25</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">PASS</span>
+                  <a href="#" class="queue-item-action">Review →</a>
+                </div>
+              </div>
+
+              <div class="queue-item">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066191</div>
+                  <div class="queue-item-title">AI-Powered Chatbot Platform — Financial Services Regulatory Body</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: FCA (Financial Conduct Authority)</span>
+                    <span>Value: £2M–£3M</span>
+                    <span>Deadline: 2026-08-28</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">PASS</span>
+                  <a href="#" class="queue-item-action">Review →</a>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 24px; color: var(--muted); font-size: 13px;">
+              Showing 4 of 12. <a href="#" style="color: var(--brand-accent); text-decoration: none;">Load more</a>
+            </div>
+          </div>
+
+          <!-- Tab: Phase 2 (In Review) -->
+          <div id="phase2" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div style="font-weight: 500; color: var(--muted);">AI assessments awaiting your review</div>
+            </div>
+            
+            <div class="queue">
+              <div class="queue-item" onclick="window.location='notice-detail--phase2.html'">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066188</div>
+                  <div class="queue-item-title">Cloud Migration: Modernising Council Digital Services Across 15 Sites</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: City of London Corporation</span>
+                    <span>Assessment: Capability HIGH | Right to Win MED</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">ASSESS</span>
+                  <a href="notice-detail--phase2.html" class="queue-item-action">Review →</a>
+                </div>
+              </div>
+
+              <div class="queue-item">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066191</div>
+                  <div class="queue-item-title">AI-Powered Chatbot Platform — Financial Services Regulatory Body</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: FCA</span>
+                    <span>Assessment: Capability MED | Right to Win HIGH</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">ASSESS</span>
+                  <a href="#" class="queue-item-action">Review →</a>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 24px; color: var(--muted); font-size: 13px;">
+              Showing 2 of 5 assessments.
+            </div>
+          </div>
+
+          <!-- Tab: Awaiting Approval -->
+          <div id="awaiting" class="tab-content">
+            <div style="color: var(--muted); text-align: center; padding: 40px 20px;">
+              <div style="font-size: 14px; margin-bottom: 8px;">✓ You're all caught up!</div>
+              <div style="font-size: 12px;">No approvals pending your click. Keep reviewing new opportunities.</div>
+            </div>
+          </div>
+
+          <!-- Tab: Pipeline -->
+          <div id="pipeline" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div style="font-weight: 500; color: var(--muted);">APPROVED opportunities in active pursuit</div>
+              <a href="pipeline.html" style="color: var(--brand-accent); text-decoration: none; font-size: 13px;">View full pipeline →</a>
+            </div>
+            
+            <div class="queue">
+              <div class="queue-item">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066180</div>
+                  <div class="queue-item-title">Digital Service Platform — Local Authority Service Delivery</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: Example Council</span>
+                    <span>Status: DOCS_DOWNLOADING</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">ACTIVE</span>
+                  <a href="#" class="queue-item-action">View →</a>
+                </div>
+              </div>
+
+              <div class="queue-item">
+                <div class="queue-item-content">
+                  <div class="queue-item-ref">REF-066175</div>
+                  <div class="queue-item-title">Cloud Infrastructure Migration Project</div>
+                  <div class="queue-item-meta">
+                    <span>Buyer: Finance Organization</span>
+                    <span>Status: CALENDARED</span>
+                  </div>
+                </div>
+                <div class="queue-item-status">
+                  <span class="status-badge status-pass">ACTIVE</span>
+                  <a href="#" class="queue-item-action">View →</a>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 24px; color: var(--muted); font-size: 13px;">
+              <a href="pipeline.html" style="color: var(--brand-accent); text-decoration: none;">View all 28 pipeline items →</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Sidebar -->
+        <div class="sidebar-right">
+          <div class="sidebar-card">
+            <h3>Quick Actions</h3>
+            <button class="action-button" onclick="alert('Create new brief')">📄 Create Brief</button>
+            <button class="action-button" onclick="alert('Export tracker')" style="margin-top: 8px; background: rgba(255,255,255,0.08); color: var(--white);">📊 Export Tracker</button>
+          </div>
+
+          <div class="sidebar-card">
+            <h3>Your Metrics</h3>
+            <ul class="sidebar-list">
+              <li>
+                <a href="#">
+                  <span>This Month</span>
+                  <span style="color: var(--brand-accent);">8 approved</span>
+                </a>
+              </li>
+              <li>
+                <a href="#">
+                  <span>Rejected</span>
+                  <span style="color: var(--muted);">2</span>
+                </a>
+              </li>
+              <li>
+                <a href="#">
+                  <span>Parked</span>
+                  <span style="color: var(--muted);">3</span>
+                </a>
+              </li>
+              <li>
+                <a href="#">
+                  <span>Avg Turnaround</span>
+                  <span style="color: var(--brand-accent);">2.1 days</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <div class="sidebar-card">
+            <h3>Escalations</h3>
+            <p style="color: var(--muted); font-size: 13px; margin: 0;">You have no escalations awaiting your decision.</p>
+            <a href="escalation-queue.html" style="display: inline-block; margin-top: 12px; color: var(--brand-accent); text-decoration: none; font-size: 13px;">View all escalations →</a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function switchTab(e, tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      
+      // Show selected tab
+      document.getElementById(tabName).classList.add('active');
+      e.target.closest('.tab').classList.add('active');
+    }
+  </script>
+</body>
+</html>

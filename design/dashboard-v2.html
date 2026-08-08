@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Savvy Scout — My Queue</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #071428;
+      color: #ffffff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+    }
+
+    .app-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #0a1f2e 0%, #071428 100%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 32px;
+    }
+
+    .header-left h1 {
+      font-family: 'Poppins', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .header-left p {
+      font-size: 13px;
+      color: #9aa3ad;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .user-badge {
+      background: rgba(255, 45, 88, 0.1);
+      border: 1px solid #ff2d58;
+      padding: 8px 16px;
+      border-radius: 24px;
+      font-size: 13px;
+      color: #ff2d58;
+      font-weight: 500;
+    }
+
+    .stats-bar {
+      display: flex;
+      gap: 32px;
+    }
+
+    .stat {
+      text-align: right;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #9aa3ad;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-family: 'Poppins', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .queue-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .search-filter {
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 300px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 10px 16px;
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    .search-input::placeholder {
+      color: #9aa3ad;
+    }
+
+    .filter-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      padding: 8px 14px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      color: #9aa3ad;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-chip:hover,
+    .filter-chip.active {
+      background: #ff2d58;
+      border-color: #ff2d58;
+      color: #ffffff;
+    }
+
+    .queue-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .queue-section {
+      margin-bottom: 32px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .section-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #9aa3ad;
+      letter-spacing: 0.5px;
+    }
+
+    .section-count {
+      background: rgba(255, 45, 88, 0.2);
+      color: #ff2d58;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .section-count.urgent {
+      background: rgba(255, 77, 79, 0.2);
+      color: #ff4d4f;
+    }
+
+    .queue-item {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .queue-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 45, 88, 0.3);
+    }
+
+    .queue-item.selected {
+      border-color: #ff2d58;
+      background: rgba(255, 45, 88, 0.1);
+    }
+
+    .queue-item.urgent {
+      border-left: 4px solid #ff4d4f;
+    }
+
+    .item-ref {
+      font-family: 'Poppins', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      color: #9aa3ad;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .item-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .item-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: #9aa3ad;
+    }
+
+    .item-flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 77, 79, 0.15);
+      color: #ff4d4f;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .item-flag.pass {
+      background: rgba(0, 191, 166, 0.15);
+      color: #00bfa6;
+    }
+
+    .item-flag.warning {
+      background: rgba(255, 180, 122, 0.15);
+      color: #ffb47a;
+    }
+
+    .item-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .action-btn-small {
+      flex: 1;
+      padding: 6px 8px;
+      background: rgba(255, 45, 88, 0.2);
+      border: 1px solid rgba(255, 45, 88, 0.3);
+      color: #ff2d58;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .action-btn-small:hover {
+      background: #ff2d58;
+      color: #ffffff;
+    }
+
+    .detail-panel {
+      width: 380px;
+      display: flex;
+      flex-direction: column;
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    .detail-header {
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .detail-ref {
+      font-family: 'Poppins', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      color: #9aa3ad;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .detail-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    .detail-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      font-size: 12px;
+    }
+
+    .detail-info-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detail-info-label {
+      color: #9aa3ad;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 3px;
+      font-size: 11px;
+    }
+
+    .detail-info-value {
+      color: #ffffff;
+      font-weight: 500;
+    }
+
+    .detail-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .detail-section {
+      margin-bottom: 24px;
+    }
+
+    .detail-section h3 {
+      font-family: 'Poppins', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #9aa3ad;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .gate-summary {
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 3px solid #ff4d4f;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .gate-summary.pass {
+      border-left-color: #00bfa6;
+    }
+
+    .gate-summary.warning {
+      border-left-color: #ffb47a;
+    }
+
+    .gate-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .gate-reason {
+      font-size: 12px;
+      color: #9aa3ad;
+    }
+
+    .decision-form {
+      background: rgba(255, 45, 88, 0.08);
+      border: 1px solid rgba(255, 45, 88, 0.2);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .decision-form h4 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ff2d58;
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #9aa3ad;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #ff2d58;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .form-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .form-buttons button {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-submit {
+      background: #ff2d58;
+      color: #ffffff;
+    }
+
+    .btn-submit:hover {
+      background: #e6254a;
+    }
+
+    .btn-cancel {
+      background: rgba(255, 255, 255, 0.1);
+      color: #9aa3ad;
+    }
+
+    .btn-cancel:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      flex-direction: column;
+      gap: 16px;
+      color: #9aa3ad;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+    }
+
+    /* Scrollbar styling */
+    .queue-list::-webkit-scrollbar,
+    .detail-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .queue-list::-webkit-scrollbar-track,
+    .detail-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .queue-list::-webkit-scrollbar-thumb,
+    .detail-content::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+
+    .queue-list::-webkit-scrollbar-thumb:hover,
+    .detail-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Responsive */
+    @media (max-width: 1200px) {
+      .stats-bar {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .detail-panel {
+        width: 320px;
+      }
+
+      header {
+        padding: 16px;
+        gap: 16px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      main {
+        flex-direction: column;
+      }
+
+      .detail-panel {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .search-filter {
+        flex-direction: column;
+      }
+
+      .search-input {
+        min-width: auto;
+      }
+
+      .header-right {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .stats-bar {
+        flex-direction: row;
+        gap: 16px;
+        width: 100%;
+      }
+
+      .stat {
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header>
+      <div class="header-left">
+        <h1>📬 My Queue</h1>
+        <p>Opportunities waiting for your decision</p>
+      </div>
+      <div class="header-right">
+        <div class="stats-bar">
+          <div class="stat">
+            <div class="stat-label">This Month</div>
+            <div class="stat-value">8 Approved</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Avg Turnaround</div>
+            <div class="stat-value">2.1 days</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Flagged</div>
+            <div class="stat-value" style="color: #ff4d4f;">3</div>
+          </div>
+        </div>
+        <div class="user-badge">👤 Logged in as Mark</div>
+      </div>
+    </header>
+
+    <main>
+      <div class="queue-panel">
+        <div class="search-filter">
+          <input type="text" class="search-input" placeholder="Search by reference or title..." />
+          <div class="filter-chips">
+            <div class="filter-chip active" data-filter="all">All (16)</div>
+            <div class="filter-chip" data-filter="urgent">🔴 Urgent (3)</div>
+            <div class="filter-chip" data-filter="phase1">Phase 1 (8)</div>
+            <div class="filter-chip" data-filter="phase2">Phase 2 (5)</div>
+          </div>
+        </div>
+
+        <div class="queue-list">
+          <!-- URGENT SECTION -->
+          <div class="queue-section">
+            <div class="section-header">
+              <div class="section-title">🔴 URGENT — Due in 3 days or less</div>
+              <div class="section-count urgent">3</div>
+            </div>
+
+            <div class="queue-item urgent" onclick="selectItem(this, 'REF-066189')">
+              <div class="item-ref">REF-066189</div>
+              <div class="item-title">Office Refurbishment Programme — Northern Facilities Hub</div>
+              <div class="item-meta">
+                <span>NHS Northern Trust</span>
+                <span>•</span>
+                <span>2 days left</span>
+              </div>
+              <div class="item-flag">🚩 Gate 2 FLAG: Not bespoke</div>
+              <div class="item-actions">
+                <button class="action-btn-small" onclick="startDecision(event, 'approve')">Approve</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'reject')">Reject</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'escalate')">Escalate</button>
+              </div>
+            </div>
+
+            <div class="queue-item urgent" onclick="selectItem(this, 'REF-066201')">
+              <div class="item-ref">REF-066201</div>
+              <div class="item-title">Security Clearance Requirements — Defense Procurement</div>
+              <div class="item-meta">
+                <span>Ministry of Defence</span>
+                <span>•</span>
+                <span>5 days left</span>
+              </div>
+              <div class="item-flag">🚩 Gate 1 FLAG: SC/DV required</div>
+              <div class="item-actions">
+                <button class="action-btn-small" onclick="startDecision(event, 'approve')">Approve</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'reject')">Reject</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'escalate')">Escalate</button>
+              </div>
+            </div>
+
+            <div class="queue-item urgent" onclick="selectItem(this, 'REF-066210')">
+              <div class="item-ref">REF-066210</div>
+              <div class="item-title">Managed Services Contract — Ambiguous CPV Codes</div>
+              <div class="item-meta">
+                <span>Large Finance Org</span>
+                <span>•</span>
+                <span>1 day left</span>
+              </div>
+              <div class="item-flag">🚩 Gate 5 FLAG: Unlisted codes</div>
+              <div class="item-actions">
+                <button class="action-btn-small" onclick="startDecision(event, 'approve')">Approve</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'reject')">Reject</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'escalate')">Escalate</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- PHASE 1 SECTION -->
+          <div class="queue-section">
+            <div class="section-header">
+              <div class="section-title">Phase 1 — Triage</div>
+              <div class="section-count">8</div>
+            </div>
+
+            <div class="queue-item" onclick="selectItem(this, 'REF-066188')">
+              <div class="item-ref">REF-066188</div>
+              <div class="item-title">Cloud Migration: Modernising Council Digital Services Across 15 Sites</div>
+              <div class="item-meta">
+                <span>City of London Corporation</span>
+                <span>•</span>
+                <span>6 days left</span>
+              </div>
+              <div class="item-flag pass">✓ PASS: Ready for Phase 2</div>
+              <div class="item-actions">
+                <button class="action-btn-small" onclick="startDecision(event, 'approve')">Approve</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'reject')">Reject</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'escalate')">Escalate</button>
+              </div>
+            </div>
+
+            <div class="queue-item" onclick="selectItem(this, 'REF-066185')">
+              <div class="item-ref">REF-066185</div>
+              <div class="item-title">Healthcare Data Analytics Platform — NHS Regional Integration</div>
+              <div class="item-meta">
+                <span>NHS North West</span>
+                <span>•</span>
+                <span>9 days left</span>
+              </div>
+              <div class="item-flag pass">✓ PASS: Ready for Phase 2</div>
+              <div class="item-actions">
+                <button class="action-btn-small" onclick="startDecision(event, 'approve')">Approve</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'reject')">Reject</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'escalate')">Escalate</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- PHASE 2 SECTION -->
+          <div class="queue-section">
+            <div class="section-header">
+              <div class="section-title">Phase 2 — AI Assessment Review</div>
+              <div class="section-count">5</div>
+            </div>
+
+            <div class="queue-item" onclick="selectItem(this, 'REF-066175')">
+              <div class="item-ref">REF-066175</div>
+              <div class="item-title">Cloud Infrastructure Migration Project</div>
+              <div class="item-meta">
+                <span>Finance Organization</span>
+                <span>•</span>
+                <span>14 days left</span>
+              </div>
+              <div class="item-flag pass">✓ AI: PURSUE (HIGH confidence)</div>
+              <div class="item-actions">
+                <button class="action-btn-small" onclick="startDecision(event, 'approve')">Accept</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'reject')">Revise</button>
+                <button class="action-btn-small" onclick="startDecision(event, 'escalate')">Escalate</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL PANEL -->
+      <div class="detail-panel" id="detailPanel">
+        <div class="empty-state">
+          <p>← Click an item to view details</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function selectItem(element, refId) {
+      // Remove previous selection
+      document.querySelectorAll('.queue-item').forEach(item => item.classList.remove('selected'));
+      element.classList.add('selected');
+
+      // Mock data for different refs
+      const itemData = {
+        'REF-066189': {
+          ref: 'REF-066189',
+          title: 'Office Refurbishment Programme — Northern Facilities Hub',
+          buyer: 'NHS Northern Trust',
+          value: '£500K–£800K',
+          deadline: '2026-08-22',
+          daysLeft: 2,
+          owner: 'Hammad',
+          source: 'Find a Tender (FTS)',
+          gates: [
+            { name: 'Gate 1: Sector & Owner', status: 'pass', reason: 'NHS Healthcare → Hammad' },
+            { name: 'Gate 2: Type of Work', status: 'fail', reason: 'Capital works, not bespoke development' },
+            { name: 'Gate 3: Framework', status: 'pass', reason: 'Direct procurement' },
+          ],
+          summary: 'Project scope: Refurbish 8 office locations with new furniture, partition walls, AV systems. No software or integration component.'
+        },
+        'REF-066201': {
+          ref: 'REF-066201',
+          title: 'Security Clearance Requirements — Defense Procurement',
+          buyer: 'Ministry of Defence',
+          value: '£2.5M–£4M',
+          deadline: '2026-09-10',
+          daysLeft: 22,
+          owner: 'Kanvesh',
+          source: 'Contracts Finder',
+          gates: [
+            { name: 'Gate 1: Sector & Owner', status: 'warning', reason: 'Security Clearance required (SC/DV)' },
+            { name: 'Gate 2: Type of Work', status: 'pass', reason: 'Systems integration & infrastructure' },
+          ],
+          summary: 'Tender requires SC or DV clearance. Trifork will need to apply for facility clearance or partner with cleared contractor.'
+        },
+        'REF-066188': {
+          ref: 'REF-066188',
+          title: 'Cloud Migration: Modernising Council Digital Services Across 15 Sites',
+          buyer: 'City of London Corporation',
+          value: '£1.2M–£1.8M',
+          deadline: '2026-08-15',
+          daysLeft: 6,
+          owner: 'Mark',
+          source: 'Find a Tender (FTS)',
+          gates: [
+            { name: 'Gate 1: Sector & Owner', status: 'pass', reason: 'Local Government + IT Services → Mark' },
+            { name: 'Gate 2: Type of Work', status: 'pass', reason: 'Bespoke cloud integration & platform design' },
+            { name: 'Gate 3: Framework', status: 'pass', reason: 'Direct open procurement' },
+            { name: 'Gate 4: Window', status: 'pass', reason: 'Tender open, 27 days remaining' },
+            { name: 'Gate 5: CPV', status: 'pass', reason: '72200000 on pass list' },
+          ],
+          summary: 'Council seeks digital transformation partner for hybrid cloud migration. Scope: architecture, implementation, data migration, training, 12 months managed support.'
+        },
+      };
+
+      const data = itemData[refId] || itemData['REF-066188'];
+      const panel = document.getElementById('detailPanel');
+
+      panel.innerHTML = `
+        <div class="detail-header">
+          <div class="detail-ref">${data.ref}</div>
+          <div class="detail-title">${data.title}</div>
+          <div class="detail-info">
+            <div class="detail-info-item">
+              <div class="detail-info-label">Buyer</div>
+              <div class="detail-info-value">${data.buyer}</div>
+            </div>
+            <div class="detail-info-item">
+              <div class="detail-info-label">Value</div>
+              <div class="detail-info-value">${data.value}</div>
+            </div>
+            <div class="detail-info-item">
+              <div class="detail-info-label">Owner</div>
+              <div class="detail-info-value">${data.owner}</div>
+            </div>
+            <div class="detail-info-item">
+              <div class="detail-info-label">Days Left</div>
+              <div class="detail-info-value" style="color: ${data.daysLeft < 5 ? '#ff4d4f' : '#ffffff'}">${data.daysLeft} days</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-content">
+          <div class="detail-section">
+            <h3>Gate Results</h3>
+            ${data.gates.map(gate => `
+              <div class="gate-summary ${gate.status}">
+                <div class="gate-name">${gate.name}</div>
+                <div class="gate-reason">${gate.reason}</div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="detail-section">
+            <h3>Summary</h3>
+            <p style="font-size: 13px; color: #9aa3ad; line-height: 1.5;">${data.summary}</p>
+          </div>
+
+          <div class="detail-section" id="decisionForm"></div>
+        </div>
+      `;
+    }
+
+    function startDecision(event, type) {
+      event.stopPropagation();
+      const form = document.getElementById('decisionForm');
+      
+      const labels = {
+        approve: { title: '✓ Approve for Phase 2?', color: '#00bfa6' },
+        reject: { title: '✗ Reject this opportunity?', color: '#ff4d4f' },
+        escalate: { title: '⚠ Escalate to Victoria?', color: '#ffb47a' }
+      };
+
+      const config = labels[type];
+
+      form.innerHTML = `
+        <div class="decision-form" style="border-color: ${config.color}33;">
+          <h4 style="color: ${config.color};">${config.title}</h4>
+          <div class="form-group">
+            <label>Reason (required)</label>
+            <textarea id="reasonField" placeholder="Explain your decision..." autofocus></textarea>
+          </div>
+          <div class="form-buttons">
+            <button class="btn-submit" style="background: ${config.color};" onclick="submitDecision('${type}')">Confirm</button>
+            <button class="btn-cancel" onclick="cancelDecision()">Cancel</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('reasonField').focus();
+    }
+
+    function submitDecision(type) {
+      const reason = document.getElementById('reasonField').value.trim();
+      if (!reason) {
+        alert('Please provide a reason');
+        return;
+      }
+
+      alert(`Decision recorded: ${type.toUpperCase()}\nReason: ${reason}`);
+      document.getElementById('decisionForm').innerHTML = '';
+      // In production: Remove item from queue, show next item, etc.
+    }
+
+    function cancelDecision() {
+      document.getElementById('decisionForm').innerHTML = '';
+    }
+
+    // Filter chips
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', function() {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        // In production: Filter queue items
+      });
+    });
+
+    // Initial selection
+    selectItem(document.querySelector('.queue-item'), 'REF-066189');
+  </script>
+</body>
+</html>

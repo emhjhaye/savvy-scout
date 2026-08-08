@@ -1,0 +1,12 @@
+body { font-family: system-ui, sans-serif; margin: 0; padding: 0 1.5rem 2rem; }
+header { display: flex; align-items: baseline; gap: 1.5rem; border-bottom: 1px solid #ccc; padding: 0.5rem 0; }
+nav a { margin-right: 1rem; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+th, td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
+.flashes { list-style: none; padding: 0; }
+.flashes li { padding: 0.4rem 0.8rem; margin: 0.3rem 0; background: #eef; }
+.flashes li.error { background: #fee; }
+.login { max-width: 320px; margin: 4rem auto; text-align: center; }
+.login form label { display: block; margin: 0.6rem 0; text-align: left; }
+.login input { width: 100%; box-sizing: border-box; }
+.error { color: #900; }

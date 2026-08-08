@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Notice Detail</title>
+  <link rel="stylesheet" href="design/design-tokens.css">
+  <link rel="stylesheet" href="design/components.css">
+  <style>
+    /* Small layout tweaks relying on shared components */
+    .wrap{max-width:var(--container-width);margin:28px auto;padding:0 20px}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
+    .panel{padding:18px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="content panel">
+        <h1 style="margin:0 0 6px 0">Ref 066188 — Cloud migration for council services</h1>
+        <div class="meta">Buyer: City Council • Deadline: 2026-08-15 • Source: Find a Tender</div>
+        <div class="gates">
+          <div class="gate">Gate 1: PASS</div>
+          <div class="gate" style="background:rgba(255,45,88,0.08)">Gate 2: FLAG</div>
+          <div class="gate">Gate 3: PASS</div>
+        </div>
+
+        <h3 style="margin-top:18px">Notice text</h3>
+        <pre>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Tender details and requirements would appear here. This view shows the raw notice text and parsed fields for the reviewer.</pre>
+
+        <div style="margin-top:18px"><strong>Triage decision</strong></div>
+        <div style="margin-top:8px" class="actions">
+          <button class="btn" onclick="alert('Marked PASS')">Mark PASS</button>
+          <button class="btn" style="background:gray" onclick="alert('Marked FLAG')">Mark FLAG</button>
+          <button class="btn" style="background:#666" onclick="alert('Escalated to Victoria')">Escalate</button>
+        </div>
+      </div>
+n      <aside style="width:360px">
+        <div class="panel">
+          <h4 style="margin-top:0">Brief generator</h4>
+          <p style="color:var(--muted)">Auto-generate a 10-section internal brief for Victoria.</p>
+          <div style="margin-top:12px"><button class="btn" style="width:100%" onclick="alert('Generated brief (docx)')">Generate brief</button></div>
+          <div style="margin-top:12px;color:var(--muted);font-size:13px">Saved briefs appear in briefs/ and can be emailed to Victoria only (requires Graph setup).</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>

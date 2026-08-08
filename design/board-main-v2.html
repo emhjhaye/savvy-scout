@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Savvy Scout — Main Board</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #FAFBFC;
+      color: #1A2C4A;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      line-height: 1.6;
+    }
+
+    .app-wrapper {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      background: #FFFFFF;
+      border-right: 1px solid #E5E7EB;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      padding: 24px 20px;
+      border-bottom: 1px solid #E5E7EB;
+    }
+
+    .logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1A2C4A;
+      margin-bottom: 4px;
+    }
+
+    .logo-tagline {
+      font-size: 11px;
+      color: #6B7280;
+    }
+
+    .sidebar-user {
+      padding: 16px 20px;
+      background: #F3F4F6;
+      border-bottom: 1px solid #E5E7EB;
+      margin: 12px;
+      border-radius: 8px;
+    }
+
+    .user-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1A2C4A;
+      margin-bottom: 3px;
+    }
+
+    .user-role {
+      font-size: 11px;
+      color: #6B7280;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px;
+    }
+
+    .nav-section {
+      margin-bottom: 24px;
+    }
+
+    .nav-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #9CA3AF;
+      padding: 0 12px;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      margin-bottom: 6px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      color: #6B7280;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+    }
+
+    .nav-item:hover {
+      background: #F3F4F6;
+      border-color: #E5E7EB;
+      color: #1A2C4A;
+    }
+
+    .nav-item.active {
+      background: #FEF2F4;
+      border-color: #FF2D58;
+      color: #FF2D58;
+      font-weight: 600;
+    }
+
+    .nav-icon {
+      font-size: 16px;
+    }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-top: 1px solid #E5E7EB;
+    }
+
+    .logout-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: #FEE2E7;
+      border: 1px solid #FECDD3;
+      border-radius: 8px;
+      color: #DC2626;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: #FED7DD;
+      border-color: #FBCFE8;
+    }
+
+    /* MAIN CONTENT */
+    .main-content {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      background: #FFFFFF;
+      border-bottom: 1px solid #E5E7EB;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .header-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1A2C4A;
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 24px;
+    }
+
+    .stat-small {
+      text-align: right;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #6B7280;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1A2C4A;
+    }
+
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px;
+    }
+
+    .content-section {
+      display: none;
+    }
+
+    .content-section.active {
+      display: block;
+    }
+
+    /* QUEUE SECTION */
+    .search-filter {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .search-input {
+      flex: 1;
+      min-width: 300px;
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      padding: 10px 16px;
+      border-radius: 8px;
+      color: #1A2C4A;
+      font-size: 13px;
+    }
+
+    .search-input::placeholder {
+      color: #9CA3AF;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #FF2D58;
+      box-shadow: 0 0 0 3px rgba(255, 45, 88, 0.1);
+    }
+
+    .filter-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      padding: 8px 14px;
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 20px;
+      color: #6B7280;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .filter-chip:hover {
+      border-color: #FF2D58;
+      color: #FF2D58;
+    }
+
+    .filter-chip.active {
+      background: #FF2D58;
+      border-color: #FF2D58;
+      color: #FFFFFF;
+    }
+
+    .queue-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .queue-card {
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .queue-card:hover {
+      border-color: #FF2D58;
+      box-shadow: 0 4px 12px rgba(255, 45, 88, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .queue-card.urgent {
+      border-left: 4px solid #EF4444;
+      border-top: 1px solid #E5E7EB;
+      border-right: 1px solid #E5E7EB;
+      border-bottom: 1px solid #E5E7EB;
+    }
+
+    .card-ref {
+      font-size: 11px;
+      font-weight: 700;
+      color: #9CA3AF;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1A2C4A;
+      margin-bottom: 10px;
+      line-height: 1.3;
+    }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: #6B7280;
+    }
+
+    .card-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #F0FDF4;
+      color: #10B981;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .card-badge.flag {
+      background: #FEF3C7;
+      color: #D97706;
+    }
+
+    .card-badge.fail {
+      background: #FEE2E2;
+      color: #DC2626;
+    }
+
+    .card-action {
+      padding: 8px 14px;
+      background: #FF2D58;
+      border: none;
+      color: #FFFFFF;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .card-action:hover {
+      background: #E6254A;
+      transform: translateY(-1px);
+    }
+
+    /* MODAL */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #FFFFFF;
+      border-radius: 12px;
+      max-width: 900px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      width: 90%;
+    }
+
+    .modal-header {
+      padding: 24px;
+      border-bottom: 1px solid #E5E7EB;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1A2C4A;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: #9CA3AF;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-body {
+      padding: 24px;
+    }
+
+    /* PIPELINE KANBAN */
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    .pipeline-column {
+      background: #F9FAFB;
+      border: 1px solid #E5E7EB;
+      border-radius: 12px;
+      padding: 16px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .column-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #E5E7EB;
+    }
+
+    .column-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1A2C4A;
+      text-transform: uppercase;
+    }
+
+    .column-count {
+      background: #E5E7EB;
+      color: #6B7280;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .pipeline-item {
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .pipeline-item:hover {
+      border-color: #FF2D58;
+      box-shadow: 0 2px 8px rgba(255, 45, 88, 0.1);
+    }
+
+    .pipeline-item-ref {
+      font-size: 10px;
+      font-weight: 700;
+      color: #9CA3AF;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .pipeline-item-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1A2C4A;
+      margin-bottom: 6px;
+      line-height: 1.2;
+    }
+
+    .pipeline-item-meta {
+      font-size: 11px;
+      color: #6B7280;
+      margin-bottom: 8px;
+    }
+
+    .urgency-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      background: #FEE2E2;
+      color: #DC2626;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .urgency-badge.warning {
+      background: #FEF3C7;
+      color: #D97706;
+    }
+
+    .urgency-badge.normal {
+      background: #F3F4F6;
+      color: #6B7280;
+    }
+
+    /* ESCALATIONS */
+    .escalations-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .escalation-card {
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .escalation-card:hover {
+      border-color: #FF2D58;
+      box-shadow: 0 4px 12px rgba(255, 45, 88, 0.1);
+    }
+
+    .escalation-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #FEE2E2;
+      color: #DC2626;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .escalation-trigger.owner {
+      background: #FEF3C7;
+      color: #D97706;
+    }
+
+    /* EMPTY STATE */
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 300px;
+      color: #9CA3AF;
+      font-size: 16px;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #D1D5DB;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #9CA3AF;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 1024px) {
+      .app-wrapper {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      header {
+        padding: 16px;
+      }
+
+      main {
+        padding: 16px;
+      }
+
+      .escalations-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .queue-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header-stats {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .pipeline-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-wrapper">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-text">🎯 Savvy Scout</div>
+        <div class="logo-tagline">Bid Pipeline Automation</div>
+      </div>
+
+      <div class="sidebar-user">
+        <div class="user-name" id="sidebarUserName">Mark Johnson</div>
+        <div class="user-role" id="sidebarUserRole">Sector Owner — Government</div>
+      </div>
+
+      <div class="sidebar-nav">
+        <div class="nav-section" id="ownerNav">
+          <div class="nav-section-title">Your Queue</div>
+          <div class="nav-item active" data-section="queue" onclick="switchSection(event)">
+            <span class="nav-icon">📬</span>
+            <span>My Queue</span>
+          </div>
+          <div class="nav-item" data-section="pipeline" onclick="switchSection(event)">
+            <span class="nav-icon">📈</span>
+            <span>Pipeline</span>
+          </div>
+        </div>
+
+        <div class="nav-section" id="victoriaNav" style="display: none;">
+          <div class="nav-section-title">Bid Director</div>
+          <div class="nav-item" data-section="queue" onclick="switchSection(event)">
+            <span class="nav-icon">📬</span>
+            <span>My Queue</span>
+          </div>
+          <div class="nav-item active" data-section="escalations" onclick="switchSection(event)">
+            <span class="nav-icon">🚨</span>
+            <span>Escalations</span>
+          </div>
+          <div class="nav-item" data-section="pipeline" onclick="switchSection(event)">
+            <span class="nav-icon">📈</span>
+            <span>Pipeline</span>
+          </div>
+          <div class="nav-item" data-section="admin" onclick="switchSection(event)">
+            <span class="nav-icon">⚙️</span>
+            <span>Admin Settings</span>
+          </div>
+        </div>
+
+        <div class="nav-section">
+          <div class="nav-section-title">System</div>
+          <div class="nav-item" data-section="help" onclick="switchSection(event)">
+            <span class="nav-icon">❓</span>
+            <span>Help & Support</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="logout-btn" onclick="logout()">← Log Out</button>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+      <header>
+        <h1 class="header-title" id="pageTitle">📬 My Queue</h1>
+        <div class="header-stats">
+          <div class="stat-small">
+            <div class="stat-label">This Month</div>
+            <div class="stat-value" id="statApproved">8</div>
+          </div>
+          <div class="stat-small">
+            <div class="stat-label">Avg Turnaround</div>
+            <div class="stat-value">2.1 days</div>
+          </div>
+          <div class="stat-small">
+            <div class="stat-label">Flagged</div>
+            <div class="stat-value" style="color: #DC2626;" id="statFlagged">3</div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <!-- QUEUE SECTION -->
+        <div class="content-section active" id="queueSection">
+          <div class="search-filter">
+            <input type="text" class="search-input" placeholder="Search by reference or title..." />
+            <div class="filter-chips">
+              <div class="filter-chip active" data-filter="all">All (16)</div>
+              <div class="filter-chip" data-filter="urgent">🔴 Urgent (3)</div>
+              <div class="filter-chip" data-filter="phase1">Phase 1 (8)</div>
+              <div class="filter-chip" data-filter="phase2">Phase 2 (5)</div>
+            </div>
+          </div>
+
+          <div class="queue-grid">
+            <div class="queue-card urgent">
+              <div class="card-ref">REF-066189</div>
+              <div class="card-title">Office Refurbishment Programme</div>
+              <div class="card-meta">NHS Northern Trust • 2 days</div>
+              <div class="card-badge flag">🚩 Gate 2 FLAG</div>
+              <button class="card-action" onclick="viewDetail('REF-066189', 'Office Refurbishment Programme')">Review</button>
+            </div>
+
+            <div class="queue-card urgent">
+              <div class="card-ref">REF-066201</div>
+              <div class="card-title">Security Clearance — Defence</div>
+              <div class="card-meta">Ministry of Defence • 5 days</div>
+              <div class="card-badge flag">🚩 Gate 1 FLAG</div>
+              <button class="card-action" onclick="viewDetail('REF-066201', 'Security Clearance')">Review</button>
+            </div>
+
+            <div class="queue-card urgent">
+              <div class="card-ref">REF-066210</div>
+              <div class="card-title">Managed Services — CPV Codes</div>
+              <div class="card-meta">Finance Organization • 1 day</div>
+              <div class="card-badge fail">🚩 Gate 5 FLAG</div>
+              <button class="card-action" onclick="viewDetail('REF-066210', 'Managed Services')">Review</button>
+            </div>
+
+            <div class="queue-card">
+              <div class="card-ref">REF-066188</div>
+              <div class="card-title">Cloud Migration — City Council</div>
+              <div class="card-meta">City of London Corp • 6 days</div>
+              <div class="card-badge">✓ PASS</div>
+              <button class="card-action" onclick="viewDetail('REF-066188', 'Cloud Migration')">Review</button>
+            </div>
+
+            <div class="queue-card">
+              <div class="card-ref">REF-066185</div>
+              <div class="card-title">Healthcare Data Analytics</div>
+              <div class="card-meta">NHS North West • 9 days</div>
+              <div class="card-badge">✓ PASS</div>
+              <button class="card-action" onclick="viewDetail('REF-066185', 'Healthcare Analytics')">Review</button>
+            </div>
+
+            <div class="queue-card">
+              <div class="card-ref">REF-066175</div>
+              <div class="card-title">Cloud Infrastructure Migration</div>
+              <div class="card-meta">Finance Organization • 14 days</div>
+              <div class="card-badge">✓ Phase 2</div>
+              <button class="card-action" onclick="viewDetail('REF-066175', 'Infrastructure')">Review</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PIPELINE SECTION -->
+        <div class="content-section" id="pipelineSection">
+          <div class="pipeline-grid">
+            <div class="pipeline-column">
+              <div class="column-header">
+                <div class="column-title">✓ Approved</div>
+                <div class="column-count">4</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066175</div>
+                <div class="pipeline-item-title">Cloud Infrastructure</div>
+                <div class="pipeline-item-meta">Finance Org • 14 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066180</div>
+                <div class="pipeline-item-title">Data Analytics Platform</div>
+                <div class="pipeline-item-meta">NHS South • 21 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066182</div>
+                <div class="pipeline-item-title">Security Infrastructure</div>
+                <div class="pipeline-item-meta">Gov UK • 45 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066183</div>
+                <div class="pipeline-item-title">Support Services</div>
+                <div class="pipeline-item-meta">DVLA • 30 days</div>
+              </div>
+            </div>
+
+            <div class="pipeline-column">
+              <div class="column-header">
+                <div class="column-title">⬇ Downloading</div>
+                <div class="column-count">5</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066190</div>
+                <div class="pipeline-item-title">Cloud Services RFP</div>
+                <div class="pipeline-item-meta">NHS North • 7 days</div>
+                <span class="urgency-badge">7 days</span>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066191</div>
+                <div class="pipeline-item-title">HR Systems Migration</div>
+                <div class="pipeline-item-meta">Cabinet Office • 14 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066192</div>
+                <div class="pipeline-item-title">Cybersecurity Services</div>
+                <div class="pipeline-item-meta">NCSC • 21 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066193</div>
+                <div class="pipeline-item-title">Finance Software</div>
+                <div class="pipeline-item-meta">Treasury • 30 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066194</div>
+                <div class="pipeline-item-title">Comms Platform</div>
+                <div class="pipeline-item-meta">Home Office • 10 days</div>
+              </div>
+            </div>
+
+            <div class="pipeline-column">
+              <div class="column-header">
+                <div class="column-title">📅 Calendared</div>
+                <div class="column-count">12</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066195</div>
+                <div class="pipeline-item-title">Q3 Tender Launch</div>
+                <div class="pipeline-item-meta">DfE • Due 30 Jul</div>
+                <span class="urgency-badge">2 days</span>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066196</div>
+                <div class="pipeline-item-title">RFI Response</div>
+                <div class="pipeline-item-meta">NHS England • Due 5 Aug</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066197</div>
+                <div class="pipeline-item-title">Pre-qual Questions</div>
+                <div class="pipeline-item-meta">Ministry of Justice • Due 10 Aug</div>
+              </div>
+              <div class="pipeline-item" style="opacity: 0.5;">
+                <div class="pipeline-item-ref">+ 9 more items</div>
+              </div>
+            </div>
+
+            <div class="pipeline-column">
+              <div class="column-header">
+                <div class="column-title">🚀 Active</div>
+                <div class="column-count">7</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066160</div>
+                <div class="pipeline-item-title">Bid Writing in Progress</div>
+                <div class="pipeline-item-meta">NHS Scotland • 5 days left</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066165</div>
+                <div class="pipeline-item-title">Commercial Pricing</div>
+                <div class="pipeline-item-meta">Welsh Gov • 8 days left</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066170</div>
+                <div class="pipeline-item-title">Proposal Review</div>
+                <div class="pipeline-item-meta">HMRC • 12 days left</div>
+              </div>
+              <div class="pipeline-item" style="opacity: 0.5;">
+                <div class="pipeline-item-ref">+ 4 more items</div>
+              </div>
+            </div>
+
+            <div class="pipeline-column">
+              <div class="column-header">
+                <div class="column-title">⏸ Parked</div>
+                <div class="column-count">3</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066140</div>
+                <div class="pipeline-item-title">Awaiting Client Feedback</div>
+                <div class="pipeline-item-meta">NHS North • Parked 5 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066145</div>
+                <div class="pipeline-item-title">Budget Review</div>
+                <div class="pipeline-item-meta">DfT • Parked 12 days</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066150</div>
+                <div class="pipeline-item-title">Market Conditions</div>
+                <div class="pipeline-item-meta">DCMS • Parked 20 days</div>
+              </div>
+            </div>
+
+            <div class="pipeline-column">
+              <div class="column-header">
+                <div class="column-title">✗ Rejected</div>
+                <div class="column-count">2</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066120</div>
+                <div class="pipeline-item-title">Out of Scope</div>
+                <div class="pipeline-item-meta">NHS • Rejected 3 days ago</div>
+              </div>
+              <div class="pipeline-item">
+                <div class="pipeline-item-ref">REF-066125</div>
+                <div class="pipeline-item-title">Low Win Probability</div>
+                <div class="pipeline-item-meta">Gov • Rejected 10 days ago</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ESCALATIONS SECTION (Victoria Only) -->
+        <div class="content-section" id="escalationsSection">
+          <div class="search-filter">
+            <div class="filter-chips">
+              <div class="filter-chip active">All (7)</div>
+              <div class="filter-chip">🚩 Gate FLAGs (4)</div>
+              <div class="filter-chip">⚠ Owner-marked (3)</div>
+              <div class="filter-chip">🔴 Urgent (1)</div>
+            </div>
+          </div>
+
+          <div class="escalations-grid">
+            <div class="escalation-card">
+              <div class="card-ref">REF-066189</div>
+              <div class="escalation-trigger">🚩 Gate 2 FLAG: Not Bespoke</div>
+              <div class="card-title">Office Refurbishment Programme</div>
+              <div class="card-meta">NHS Northern Trust • 2 days</div>
+              <button class="card-action" onclick="viewEscalation('REF-066189')">View Brief</button>
+            </div>
+
+            <div class="escalation-card">
+              <div class="card-ref">REF-066201</div>
+              <div class="escalation-trigger">🚩 Gate 1 FLAG: Wrong Sector</div>
+              <div class="card-title">Security Clearance — Defence</div>
+              <div class="card-meta">Ministry of Defence • 5 days</div>
+              <button class="card-action" onclick="viewEscalation('REF-066201')">View Brief</button>
+            </div>
+
+            <div class="escalation-card">
+              <div class="card-ref">REF-066210</div>
+              <div class="escalation-trigger">🚩 Gate 5 FLAG: CPV Mismatch</div>
+              <div class="card-title">Managed Services — CPV Codes</div>
+              <div class="card-meta">Finance Organization • 1 day</div>
+              <button class="card-action" onclick="viewEscalation('REF-066210')">View Brief</button>
+            </div>
+
+            <div class="escalation-card">
+              <div class="card-ref">REF-066202</div>
+              <div class="escalation-trigger escalation-trigger.owner">⚠ Owner-marked: Strategic</div>
+              <div class="card-title">Strategic Partnership Opportunity</div>
+              <div class="card-meta">Cabinet Office • 12 days</div>
+              <button class="card-action" onclick="viewEscalation('REF-066202')">View Brief</button>
+            </div>
+
+            <div class="escalation-card">
+              <div class="card-ref">REF-066203</div>
+              <div class="escalation-trigger">🚩 Gate 3 FLAG: Delivery Risk</div>
+              <div class="card-title">Infrastructure Programme</div>
+              <div class="card-meta">DfT • 8 days</div>
+              <button class="card-action" onclick="viewEscalation('REF-066203')">View Brief</button>
+            </div>
+
+            <div class="escalation-card">
+              <div class="card-ref">REF-066204</div>
+              <div class="escalation-trigger escalation-trigger.owner">⚠ Owner-marked: Budget Impact</div>
+              <div class="card-title">Large-scale Procurement</div>
+              <div class="card-meta">NHS England • 15 days</div>
+              <button class="card-action" onclick="viewEscalation('REF-066204')">View Brief</button>
+            </div>
+
+            <div class="escalation-card">
+              <div class="card-ref">REF-066205</div>
+              <div class="escalation-trigger escalation-trigger.owner">⚠ Owner-marked: High Value</div>
+              <div class="card-title">National Services Contract</div>
+              <div class="card-meta">HMRC • 20 days</div>
+              <button class="card-action" onclick="viewEscalation('REF-066205')">View Brief</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ADMIN SECTION (Victoria Only) -->
+        <div class="content-section" id="adminSection">
+          <div class="empty-state">
+            <span style="font-size: 40px;">⚙️</span>
+            <div>Admin Settings — Configure gates, sources, whitelist</div>
+            <div style="font-size: 12px; color: #6B7280;">Click "Admin Settings" in the sidebar</div>
+          </div>
+        </div>
+
+        <!-- HELP SECTION -->
+        <div class="content-section" id="helpSection">
+          <div style="max-width: 800px;">
+            <h2 style="font-size: 28px; margin-bottom: 24px; color: #1A2C4A;">Help & Support</h2>
+            
+            <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 24px; margin-bottom: 20px;">
+              <h3 style="margin-bottom: 12px; color: #FF2D58;">Quick Guide</h3>
+              <ul style="color: #6B7280; line-height: 1.8; font-size: 14px;">
+                <li><strong style="color: #1A2C4A;">My Queue:</strong> Review opportunities that need your decision (PASS/FAIL gates)</li>
+                <li><strong style="color: #1A2C4A;">Phase 1 Review:</strong> Check if gate rules passed, then Approve/Reject</li>
+                <li><strong style="color: #1A2C4A;">Phase 2 Review:</strong> Review AI assessment ratings, Accept/Revise/Escalate</li>
+                <li><strong style="color: #1A2C4A;">Pipeline:</strong> Track approved opportunities through to completion</li>
+                <li><strong style="color: #1A2C4A;">Escalations (Victoria only):</strong> Make bid/no-bid decisions on FLAGs</li>
+              </ul>
+            </div>
+
+            <div style="background: #FEF2F4; border: 1px solid #FECDD3; border-radius: 12px; padding: 24px;">
+              <h3 style="margin-bottom: 12px; color: #FF2D58;">Support</h3>
+              <p style="color: #6B7280; margin-bottom: 12px;">Need help? Contact the Savvy Scout team:</p>
+              <p style="color: #1A2C4A; font-weight: 600;">📧 support@savvyscout.co.uk</p>
+              <p style="color: #6B7280;">We're here 9-5 GMT, Monday-Friday</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal" id="detailModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">Detail</h2>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        Loading...
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Users configuration
+    const users = {
+      mark: {
+        name: 'Mark Johnson',
+        role: 'Sector Owner — Government',
+        type: 'owner',
+        showNav: 'ownerNav'
+      },
+      kanvesh: {
+        name: 'Kanvesh Patel',
+        role: 'Sector Owner — Finance',
+        type: 'owner',
+        showNav: 'ownerNav'
+      },
+      hammad: {
+        name: 'Hammad Ahmed',
+        role: 'Sector Owner — Healthcare',
+        type: 'owner',
+        showNav: 'ownerNav'
+      },
+      victoria: {
+        name: 'Victoria Milan',
+        role: 'Bid Director',
+        type: 'victoria',
+        showNav: 'victoriaNav'
+      }
+    };
+
+    let currentUser = localStorage.getItem('currentUser') || 'mark';
+    let userInfo = users[currentUser];
+
+    function initializeUser() {
+      document.getElementById('sidebarUserName').textContent = userInfo.name;
+      document.getElementById('sidebarUserRole').textContent = userInfo.role;
+
+      if (userInfo.type === 'victoria') {
+        document.getElementById('ownerNav').style.display = 'none';
+        document.getElementById('victoriaNav').style.display = 'block';
+        document.getElementById('pageTitle').textContent = '🚨 Escalations';
+        showSection('escalations');
+      }
+    }
+
+    function showSection(sectionName) {
+      document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      
+      document.getElementById(sectionName + 'Section').classList.add('active');
+      document.querySelector(`.nav-item[data-section="${sectionName}"]`).classList.add('active');
+      
+      const titles = {
+        queue: '📬 My Queue',
+        pipeline: '📈 Pipeline',
+        escalations: '🚨 Escalations',
+        admin: '⚙️ Admin Settings',
+        help: '❓ Help & Support'
+      };
+      document.getElementById('pageTitle').textContent = titles[sectionName] || 'Savvy Scout';
+    }
+
+    function switchSection(event) {
+      const section = event.target.closest('[data-section]').dataset.section;
+      
+      // Hide all sections
+      document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      
+      // Show selected section
+      document.getElementById(section + 'Section').classList.add('active');
+      event.target.closest('.nav-item').classList.add('active');
+      
+      // Update title
+      const titles = {
+        queue: '📬 My Queue',
+        pipeline: '📈 Pipeline',
+        escalations: '🚨 Escalations',
+        admin: '⚙️ Admin Settings',
+        help: '❓ Help & Support'
+      };
+      document.getElementById('pageTitle').textContent = titles[section] || 'Savvy Scout';
+    }
+
+    function viewDetail(ref, title) {
+      document.getElementById('modalTitle').textContent = ref + ' — ' + title;
+      document.getElementById('modalBody').innerHTML = `
+        <div style="color: #1A2C4A;">
+          <h3 style="margin-bottom: 16px; font-size: 16px; font-weight: 600;">Gate Results:</h3>
+          <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; border-left: 3px solid #DC2626; margin-bottom: 12px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">Gate 1: Sector Match</div>
+            <div style="font-size: 13px; color: #6B7280;">✗ FAIL — Sector not in approved list</div>
+          </div>
+          <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; border-left: 3px solid #D97706; margin-bottom: 12px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">Gate 2: Bespoke Solutions</div>
+            <div style="font-size: 13px; color: #6B7280;">⚠ FLAG — Generic service offering detected</div>
+          </div>
+          <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; border-left: 3px solid #10B981;">
+            <div style="font-weight: 600; margin-bottom: 4px;">Gate 3: Value Assessment</div>
+            <div style="font-size: 13px; color: #6B7280;">✓ PASS — Opportunity value > £100k threshold</div>
+          </div>
+          <div style="margin-top: 24px;">
+            <button style="padding: 10px 16px; background: #10B981; color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 8px;" onclick="alert('✓ Approved'); closeModal();">✓ Approve</button>
+            <button style="padding: 10px 16px; background: #DC2626; color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 8px;" onclick="alert('✗ Rejected'); closeModal();">✗ Reject</button>
+            <button style="padding: 10px 16px; background: #D97706; color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="alert('🚨 Escalated to Victoria'); closeModal();">🚨 Escalate</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('detailModal').classList.add('active');
+    }
+
+    function viewEscalation(ref) {
+      document.getElementById('modalTitle').textContent = ref + ' — Escalation Brief';
+      document.getElementById('modalBody').innerHTML = `
+        <div style="color: #1A2C4A;">
+          <h3 style="margin-bottom: 12px; font-weight: 600;">Escalation Brief</h3>
+          <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; margin-bottom: 16px; border-left: 3px solid #D97706;">
+            <div style="font-weight: 600; margin-bottom: 4px;">Issue Summary</div>
+            <div style="font-size: 13px; color: #6B7280;">Gate FLAG detected during Phase 1 review. Owner requesting escalation for strategic decision.</div>
+          </div>
+          <div style="background: #F9FAFB; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <div style="font-weight: 600; margin-bottom: 4px;">Owner's Recommendation</div>
+            <div style="font-size: 13px; color: #6B7280;">Despite the FLAG, believes this is a high-value opportunity worth pursuing. Requesting bid approval.</div>
+          </div>
+          <div style="margin-top: 24px;">
+            <button style="padding: 10px 16px; background: #10B981; color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 8px;" onclick="alert('✓ Bid Approved'); closeModal();">✓ Approve Bid</button>
+            <button style="padding: 10px 16px; background: #F59E0B; color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 8px;" onclick="alert('⏸ Parked'); closeModal();">⏸ Park</button>
+            <button style="padding: 10px 16px; background: #DC2626; color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="alert('✗ Bid Rejected'); closeModal();">✗ Reject</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('detailModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').classList.remove('active');
+    }
+
+    function logout() {
+      if (confirm('Are you sure you want to log out?')) {
+        localStorage.removeItem('currentUser');
+        window.location.href = 'login-v2.html';
+      }
+    }
+
+    // Filter chips
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', function() {
+        this.parentElement.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+      });
+    });
+
+    // Initialize
+    initializeUser();
+  </script>
+</body>
+</html>

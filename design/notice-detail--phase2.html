@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Notice Details (Phase 2)</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    .app { display: flex; min-height: 100vh; }
+    .logo { font-family: var(--font-heading); font-weight: 700; color: var(--brand-accent); margin-bottom: 18px; }
+    .main { flex: 1; padding: 32px; }
+    
+    .header-section {
+      background: rgba(7, 20, 40, 0.5);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      border-left: 4px solid var(--brand-accent);
+    }
+    .ref { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .notice-title { font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+    .badge { display: inline-block; padding: 4px 12px; background: rgba(0,191,166,0.2); color: #00BFA6; border-radius: 999px; font-size: 12px; font-weight: 600; margin-left: 12px; }
+    .meta-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+    .meta-item { font-size: 14px; }
+    .meta-label { color: var(--muted); }
+    .meta-value { font-weight: 600; margin-top: 4px; }
+    
+    .content-wrapper { display: grid; grid-template-columns: 1fr 380px; gap: 32px; }
+    
+    /* Tabs */
+    .tabs { display: flex; gap: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 24px; }
+    .tab { 
+      padding: 12px 0; 
+      border-bottom: 2px solid transparent; 
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab.active { 
+      color: var(--white);
+      border-bottom-color: var(--brand-accent);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* Assessment Card */
+    .assessment-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .assessment-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .assessment-title { font-weight: 700; font-size: 15px; }
+    .rating-badge {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-block;
+    }
+    .rating-high { background: rgba(0,191,166,0.2); color: #00BFA6; }
+    .rating-med { background: rgba(255,212,0,0.2); color: #FFD400; }
+    .rating-low { background: rgba(255,77,79,0.2); color: #FF4D4F; }
+    .rating-strong { background: rgba(0,191,166,0.2); color: #00BFA6; }
+    .rating-neutral { background: rgba(255,180,122,0.2); color: #FFB47A; }
+    .rating-weak { background: rgba(255,77,79,0.2); color: #FF4D4F; }
+    
+    .assessment-reasoning { color: var(--muted); line-height: 1.6; margin-top: 12px; font-size: 14px; }
+    .provisional-label { 
+      display: inline-block;
+      font-size: 10px;
+      color: #FFB47A;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: rgba(255,180,122,0.15);
+      border-radius: 4px;
+    }
+    
+    .open-questions {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+    }
+    .open-questions h3 { margin-top: 0; margin-bottom: 16px; }
+    .open-questions li { margin-bottom: 8px; color: var(--muted); }
+    
+    /* Right sidebar */
+    .action-panel { 
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      position: sticky;
+      top: 32px;
+    }
+    .action-panel h3 { margin-top: 0; margin-bottom: 16px; }
+    .action-btn { 
+      width: 100%; 
+      padding: 12px 16px; 
+      border-radius: 8px; 
+      border: none; 
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .action-btn.primary { background: var(--brand-accent); color: #fff; }
+    .action-btn.primary:hover { opacity: 0.9; }
+    .action-btn.danger { background: #FF4D4F; color: #fff; }
+    .action-btn.warning { background: #FFB47A; color: #fff; }
+    
+    .reason-note { font-size: 12px; color: var(--muted); margin-top: 12px; }
+    
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-dark); border-radius: 12px; padding: 32px; max-width: 500px; width: 90%; }
+    .modal-header { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+    .modal-close { float: right; cursor: pointer; font-size: 20px; color: var(--muted); }
+    textarea { width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; background: rgba(255,255,255,0.02); color: var(--white); font-family: inherit; resize: vertical; min-height: 120px; }
+    
+    .crumbs { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .crumbs a { color: var(--brand-accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="logo">Savvy Scout</div>
+      <ul class="nav">
+        <li><a href="dashboard-home.html">Dashboard</a></li>
+        <li class="active"><a href="#">My Queue</a></li>
+        <li><a href="#">Escalations</a></li>
+        <li><a href="#">Admin</a></li>
+      </ul>
+      <div style="margin-top:20px;color:var(--muted);font-size:13px">Logged in as Mark</div>
+    </aside>
+
+    <main class="main">
+      <div class="crumbs">
+        <a href="dashboard-home.html">Dashboard</a> / My Queue / <strong>Phase 2 Review</strong>
+      </div>
+
+      <div class="header-section">
+        <div class="ref">REF-066188</div>
+        <div class="notice-title">Cloud Migration: Modernising Council Digital Services Across 15 Sites <span class="badge">Phase 2</span></div>
+        <div class="meta-row">
+          <div class="meta-item">
+            <div class="meta-label">BUYER</div>
+            <div class="meta-value">City of London Corporation</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">INDICATIVE VALUE</div>
+            <div class="meta-value">£1.2M–£1.8M</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">STAGE</div>
+            <div class="meta-value">Gate 1–5: All PASS</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content-wrapper">
+        <section>
+          <div class="tabs">
+            <div class="tab active" onclick="showTab(event, 'assessment')">AI Assessment</div>
+            <div class="tab" onclick="showTab(event, 'details')">Opportunity Details</div>
+            <div class="tab" onclick="showTab(event, 'gates')">Gate Results</div>
+          </div>
+
+          <!-- Assessment Tab -->
+          <div id="assessment" class="tab-content active">
+            <div style="background: rgba(0,191,166,0.1); border: 1px solid rgba(0,191,166,0.3); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+              <strong style="color: #00BFA6;">ℹ Assessment in review</strong>
+              <p style="margin: 8px 0 0 0; font-size: 13px; color: var(--muted);">The AI scope read has been completed. Review each section and approve or reject. All assessments are marked PROVISIONAL FOR VALIDATION — your expertise is the final check.</p>
+            </div>
+
+            <div class="assessment-item">
+              <div class="assessment-header">
+                <div>
+                  <div class="assessment-title">Capability Fit</div>
+                  <div class="assessment-reasoning">How well does Trifork's current capability align with the stated scope?</div>
+                </div>
+                <div class="rating-badge rating-high">HIGH</div>
+              </div>
+              <div class="assessment-reasoning">
+                Trifork has strong public sector cloud experience, demonstrated in 8+ similar migrations. The requirement for hybrid cloud architecture and multi-site coordination is a core Trifork strength. Current team has available capacity.
+              </div>
+              <div class="provisional-label">PROVISIONAL — FOR VALIDATION</div>
+            </div>
+
+            <div class="assessment-item">
+              <div class="assessment-header">
+                <div>
+                  <div class="assessment-title">Right to Win</div>
+                  <div class="assessment-reasoning">How competitive is Trifork relative to likely competitors?</div>
+                </div>
+                <div class="rating-badge rating-med">MEDIUM</div>
+              </div>
+              <div class="assessment-reasoning">
+                Trifork has relevant experience but faces competition from larger SI primes (Accenture, Capgemini) and specialist cloud integrators. UK public sector familiarity is strong but not unique. Pricing power is moderate; likely to win based on fit rather than cost.
+              </div>
+              <div class="provisional-label">PROVISIONAL — FOR VALIDATION</div>
+            </div>
+
+            <div class="assessment-item">
+              <div class="assessment-header">
+                <div>
+                  <div class="assessment-title">Competitor Position</div>
+                  <div class="assessment-reasoning">Who are the likely competitors and what is the competitive landscape?</div>
+                </div>
+                <div class="rating-badge rating-neutral">NEUTRAL</div>
+              </div>
+              <div class="assessment-reasoning">
+                Expected competitors: Accenture, Capgemini, IBM, CGI (large primes). Also specialist firms like DXC, Cognizant. Market is fragmented; no clear incumbent. Tender is likely to attract 8–12 bidders. Trifork's position is mid-field but defensible.
+              </div>
+              <div class="provisional-label">PROVISIONAL — FOR VALIDATION</div>
+            </div>
+
+            <div class="assessment-item">
+              <div class="assessment-header">
+                <div>
+                  <div class="assessment-title">Overall Recommendation</div>
+                  <div class="assessment-reasoning">Should Trifork pursue or park?</div>
+                </div>
+                <div class="rating-badge rating-high">PURSUE</div>
+              </div>
+              <div class="assessment-reasoning">
+                Recommend active pursuit. Opportunity aligns well with core capabilities. Strategic value: reference site in local government cloud practice, potential for follow-on work. Effort to prepare proposal: moderate (4–5 weeks). Risk profile: low to medium. Win probability: 25–35%.
+              </div>
+              <div class="provisional-label">PROVISIONAL — FOR VALIDATION</div>
+            </div>
+
+            <div class="open-questions">
+              <h3 style="margin-bottom: 16px;">Open Questions for Clarification</h3>
+              <ul style="margin: 0; padding-left: 20px;">
+                <li>Are existing council vendors (if any) excluded from the competition?</li>
+                <li>Is there a preferred cloud platform (AWS, Azure, GCP) or is this genuinely open?</li>
+                <li>What is the expected procurement timeline? ITT to award window?</li>
+                <li>Is a framework agreement a future requirement, or is this single engagement?</li>
+                <li>Are there sub-contractor requirements or preference for local vendors?</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Details Tab -->
+          <div id="details" class="tab-content">
+            <div style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 16px;">
+              <h3 style="margin-top: 0; margin-bottom: 12px;">Opportunity Summary</h3>
+              <p style="color: var(--muted); line-height: 1.6;">
+                The City of London Corporation seeks a digital transformation partner to migrate critical services from legacy on-premises infrastructure to a hybrid cloud platform. Scope includes architecture design, implementation, data migration, training and 12 months managed support. Estimated value £1.2M–£1.8M. Open competition, no pre-qualification rounds noted.
+              </p>
+            </div>
+          </div>
+
+          <!-- Gates Tab -->
+          <div id="gates" class="tab-content">
+            <div style="margin-bottom: 24px; padding: 12px; background: rgba(0,191,166,0.1); border-radius: 8px; border-left: 3px solid #00BFA6;">
+              <strong style="color: #00BFA6;">Overall: PASS</strong> — All gates passed. Item was approved for Phase 2.
+            </div>
+            <p style="color: var(--muted); font-size: 13px;">See Phase 1 review for detailed gate outcomes.</p>
+          </div>
+        </section>
+
+        <!-- Right Sidebar: Actions -->
+        <aside class="action-panel">
+          <h3>Your Assessment</h3>
+          <button class="action-btn primary" onclick="openModal('accept')">✓ Accept Assessment</button>
+          <button class="action-btn danger" onclick="openModal('reject')">✗ Reject & Revise</button>
+          <button class="action-btn warning" onclick="openModal('escalate')">⚠ Escalate to Victoria</button>
+          <div class="reason-note">
+            Accepting means you agree with the assessment. Rejecting requires detailed feedback for re-assessment.
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal: Accept -->
+  <div id="acceptModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal('accept')">&times;</span>
+      <div class="modal-header">Accept This Assessment?</div>
+      <p style="color: var(--muted);">The AI scope read will be approved and recorded. This opportunity moves to the APPROVED pipeline, ready for document download and calendar sync.</p>
+      <p style="color: var(--muted);">Optional note for your records:</p>
+      <textarea id="acceptReason" placeholder="e.g., Assessment is thorough and accurate. Team can resource proposal work."></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button class="action-btn primary" style="flex: 1;" onclick="submitAccept()">Confirm</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeModal('accept')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Reject & Revise -->
+  <div id="rejectModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal('reject')">&times;</span>
+      <div class="modal-header">Reject & Request Revision?</div>
+      <p style="color: var(--muted);">The assessment will be sent back for revision. Provide specific feedback on what needs to be reconsidered.</p>
+      <p style="color: var(--muted);"><strong>Feedback for revision (required):</strong></p>
+      <textarea id="rejectReason" placeholder="e.g., Underestimated competitive threat, missed that we've worked with this buyer before..." style="border-color: rgba(255,77,79,0.3);"></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button class="action-btn danger" style="flex: 1;" onclick="submitReject()">Request Revision</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeModal('reject')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Escalate to Victoria -->
+  <div id="escalateModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal('escalate')">&times;</span>
+      <div class="modal-header">Escalate to Victoria?</div>
+      <p style="color: var(--muted);">This opportunity will be flagged for Victoria's bid/no-bid decision. Your assessment and a full brief will be emailed to her.</p>
+      <p style="color: var(--muted);"><strong>Reason for escalation (required):</strong></p>
+      <textarea id="escalateReason" placeholder="e.g., Strategic opportunity but director-level decision needed on resource allocation..." style="border-color: rgba(255,180,122,0.3);"></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button class="action-btn warning" style="flex: 1;" onclick="submitEscalate()">Escalate</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeModal('escalate')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showTab(e, tabName) {
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabName).classList.add('active');
+      e.target.classList.add('active');
+    }
+
+    function openModal(type) {
+      const modals = { accept: 'acceptModal', reject: 'rejectModal', escalate: 'escalateModal' };
+      document.getElementById(modals[type]).classList.add('active');
+    }
+
+    function closeModal(type) {
+      const modals = { accept: 'acceptModal', reject: 'rejectModal', escalate: 'escalateModal' };
+      document.getElementById(modals[type]).classList.remove('active');
+    }
+
+    function submitAccept() {
+      alert('Assessment accepted! Item moves to APPROVED pipeline.');
+      closeModal('accept');
+    }
+
+    function submitReject() {
+      const reason = document.getElementById('rejectReason').value;
+      if (!reason.trim()) { alert('Please provide feedback.'); return; }
+      alert('Revision requested. AI will re-assess with your feedback.');
+      closeModal('reject');
+    }
+
+    function submitEscalate() {
+      const reason = document.getElementById('escalateReason').value;
+      if (!reason.trim()) { alert('Please provide a reason.'); return; }
+      alert('Escalated to Victoria! Brief emailed with your assessment.');
+      closeModal('escalate');
+    }
+  </script>
+</body>
+</html>

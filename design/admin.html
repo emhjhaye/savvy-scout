@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Admin Settings</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    .app { display: flex; min-height: 100vh; }
+    .logo { font-family: var(--font-heading); font-weight: 700; color: var(--brand-accent); margin-bottom: 18px; }
+    .main { flex: 1; padding: 32px; }
+    
+    .header-section {
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .header-section h2 { margin: 0 0 6px 0; }
+    .header-section p { color: var(--muted); font-size: 14px; margin: 0; }
+    
+    /* Tabs */
+    .admin-tabs { display: flex; gap: 24px; margin-bottom: 32px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .admin-tab { 
+      padding: 12px 0; 
+      border-bottom: 2px solid transparent; 
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 500;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .admin-tab:hover { color: var(--white); }
+    .admin-tab.active { 
+      color: var(--white);
+      border-bottom-color: var(--brand-accent);
+    }
+    
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    
+    /* Form Elements */
+    .form-section {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .form-section h3 { margin-top: 0; margin-bottom: 16px; font-size: 15px; }
+    
+    .form-group {
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .form-label { font-weight: 600; font-size: 13px; color: var(--muted); }
+    .form-label strong { color: var(--white); font-weight: 600; }
+    
+    .form-input, .form-select, textarea {
+      padding: 10px 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.02);
+      color: var(--white);
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .form-input:focus, .form-select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--brand-accent);
+      background: rgba(255,255,255,0.04);
+    }
+    
+    /* Tag List */
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .tag {
+      padding: 6px 12px;
+      background: rgba(0,191,166,0.15);
+      border: 1px solid rgba(0,191,166,0.3);
+      border-radius: 999px;
+      font-size: 12px;
+      color: #00BFA6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tag-remove {
+      cursor: pointer;
+      color: #00BFA6;
+      font-weight: bold;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+    .tag-remove:hover { opacity: 1; }
+    
+    /* Button */
+    .btn-save { background: var(--brand-accent); color: #fff; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
+    .btn-save:hover { opacity: 0.9; }
+    .btn-secondary { background: rgba(255,255,255,0.08); color: var(--white); padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; margin-left: 8px; }
+    
+    /* Status Indicator */
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .status-healthy { background: #00BFA6; }
+    .status-warning { background: #FFB47A; }
+    .status-error { background: #FF4D4F; }
+    
+    /* Table */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .admin-table th {
+      background: rgba(255,255,255,0.04);
+      padding: 12px;
+      text-align: left;
+      font-weight: 700;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .admin-table td {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .admin-table tr:hover td { background: rgba(255,255,255,0.02); }
+    
+    .audit-log-entry {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .log-timestamp { color: var(--muted); }
+    .log-user { font-weight: 600; }
+    .log-action { color: #00BFA6; margin-top: 4px; }
+    .log-reason { color: var(--muted); font-style: italic; margin-top: 4px; }
+    
+    .success-msg {
+      background: rgba(0,191,166,0.1);
+      border: 1px solid rgba(0,191,166,0.3);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #00BFA6;
+      display: none;
+    }
+    .success-msg.show { display: block; }
+    
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    
+    @media (max-width: 1200px) {
+      .form-group { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="logo">Savvy Scout</div>
+      <ul class="nav">
+        <li><a href="dashboard-home-enhanced.html">Dashboard</a></li>
+        <li><a href="escalation-queue.html">Escalations</a></li>
+        <li><a href="pipeline.html">Pipeline</a></li>
+        <li class="active"><a href="#">Admin</a></li>
+      </ul>
+      <div style="margin-top:20px;color:var(--muted);font-size:13px">Logged in as <strong>Victoria</strong></div>
+    </aside>
+
+    <main class="main">
+      <div class="header-section">
+        <h2>Admin Settings</h2>
+        <p>Manage gate rules, data sources, email whitelist, and view system audit log.</p>
+      </div>
+
+      <div class="admin-tabs">
+        <div class="admin-tab active" onclick="switchAdminTab(event, 'sources')">Sources & Health</div>
+        <div class="admin-tab" onclick="switchAdminTab(event, 'gates')">Gate Rules</div>
+        <div class="admin-tab" onclick="switchAdminTab(event, 'whitelist')">Email Whitelist</div>
+        <div class="admin-tab" onclick="switchAdminTab(event, 'audit')">Audit Log</div>
+      </div>
+
+      <!-- TAB: Sources & Health -->
+      <div id="sources" class="tab-pane active">
+        <div class="form-section">
+          <h3>Data Source Configuration</h3>
+          
+          <div style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" checked style="margin-right: 8px;">
+                <strong>Find a Tender (OCDS API)</strong>
+              </label>
+              <span class="status-indicator status-healthy"></span> Healthy
+            </div>
+            <div style="color: var(--muted); font-size: 12px; margin-left: 24px;">
+              Last sweep: 2026-07-19 03:15 UTC • Next scheduled: 2026-07-20 03:00 UTC • 342 notices retrieved
+            </div>
+          </div>
+
+          <div style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" checked style="margin-right: 8px;">
+                <strong>Contracts Finder API</strong>
+              </label>
+              <span class="status-indicator status-healthy"></span> Healthy
+            </div>
+            <div style="color: var(--muted); font-size: 12px; margin-left: 24px;">
+              Last sweep: 2026-07-19 03:22 UTC • Next scheduled: 2026-07-20 03:15 UTC • 87 notices retrieved
+            </div>
+          </div>
+
+          <div style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" style="margin-right: 8px;">
+                <strong>Custom RSS Feed</strong>
+              </label>
+              <span class="status-indicator status-warning"></span> Not configured
+            </div>
+            <div style="color: var(--muted); font-size: 12px; margin-left: 24px;">
+              Optional. Provide a custom RSS feed URL for additional notice sources.
+            </div>
+            <input type="text" class="form-input" style="margin-left: 24px; margin-top: 8px; width: 400px; max-width: 100%;" placeholder="https://example.com/feeds/tenders.rss">
+          </div>
+
+          <div>
+            <button class="btn-save" onclick="showSuccessMsg('Sources updated.')">Save Configuration</button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>Manual Sweep</h3>
+          <p style="color: var(--muted); font-size: 13px; margin: 0 0 16px 0;">Trigger an immediate sweep of all configured sources. This does not replace the scheduled sweep.</p>
+          <button class="btn-save" onclick="alert('Sweep started. You will be notified when complete.')">⟳ Sweep Now</button>
+        </div>
+      </div>
+
+      <!-- TAB: Gate Rules -->
+      <div id="gates" class="tab-pane">
+        <div class="form-section">
+          <h3>Gate 1: Sector & Owner Assignment</h3>
+          
+          <div class="form-group">
+            <div class="form-label">NHS & Healthcare</div>
+            <div>
+              <div class="tag-list">
+                <span class="tag">Hammad <span class="tag-remove">✕</span></span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <select class="form-select" style="flex: 1;">
+                  <option>-- Select owner --</option>
+                  <option>Mark</option>
+                  <option>Kanvesh</option>
+                  <option>Hammad</option>
+                </select>
+                <button class="btn-secondary" style="margin-left: 0;" onclick="alert('Owner added.')">Add</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">Local & Central Government, Energy</div>
+            <div>
+              <div class="tag-list">
+                <span class="tag">Kanvesh <span class="tag-remove">✕</span></span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <select class="form-select" style="flex: 1;">
+                  <option>-- Select owner --</option>
+                  <option>Mark</option>
+                  <option>Kanvesh</option>
+                  <option>Hammad</option>
+                </select>
+                <button class="btn-secondary" style="margin-left: 0;" onclick="alert('Owner added.')">Add</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">Fintech, Aviation, Rail, Transport</div>
+            <div>
+              <div class="tag-list">
+                <span class="tag">Mark <span class="tag-remove">✕</span></span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <select class="form-select" style="flex: 1;">
+                  <option>-- Select owner --</option>
+                  <option>Mark</option>
+                  <option>Kanvesh</option>
+                  <option>Hammad</option>
+                </select>
+                <button class="btn-secondary" style="margin-left: 0;" onclick="alert('Owner added.')">Add</button>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-save" onclick="showSuccessMsg('Gate 1 updated.')">Save Gate 1</button>
+        </div>
+
+        <div class="form-section">
+          <h3>Gate 5: CPV Code Classification</h3>
+          
+          <div class="form-group">
+            <div class="form-label"><strong>Pass List</strong></div>
+            <textarea style="min-height: 100px; font-family: monospace; font-size: 12px;">72200000
+72212000
+72250000
+72263000
+72310000
+72400000
+72500000</textarea>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label"><strong>Inferred Fit</strong></div>
+            <textarea style="min-height: 80px; font-family: monospace; font-size: 12px;">72xxx (most)
+73xxx</textarea>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label"><strong>Flag List</strong></div>
+            <textarea style="min-height: 80px; font-family: monospace; font-size: 12px;">48xxx (open question: Trifork product vendor)
+Unlisted codes (default)</textarea>
+          </div>
+
+          <div class="form-group">
+            <div class="form-label"><strong>Fail List</strong></div>
+            <textarea style="min-height: 100px; font-family: monospace; font-size: 12px;">33xxx
+32xxx
+45xxx
+66xxx
+50xxx
+73430000
+80420000 (with testing)
+48190000 (with testing)</textarea>
+          </div>
+
+          <button class="btn-save" onclick="showSuccessMsg('CPV codes updated.')">Save CPV Rules</button>
+        </div>
+      </div>
+
+      <!-- TAB: Email Whitelist -->
+      <div id="whitelist" class="tab-pane">
+        <div class="form-section">
+          <h3>Approved Email Recipients</h3>
+          <p style="color: var(--muted); font-size: 13px; margin: 0 0 16px 0;">All outbound emails are sent only to @bidsavvy.io addresses on this list. Add or remove addresses below.</p>
+          
+          <div style="margin-bottom: 20px;">
+            <div class="tag-list">
+              <span class="tag">mark@bidsavvy.io <span class="tag-remove">✕</span></span>
+              <span class="tag">kanvesh@bidsavvy.io <span class="tag-remove">✕</span></span>
+              <span class="tag">hammad@bidsavvy.io <span class="tag-remove">✕</span></span>
+              <span class="tag">victoria.milan@bidsavvy.io <span class="tag-remove">✕</span></span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 20px;">
+            <input type="email" class="form-input" placeholder="Add new email address" style="flex: 1;">
+            <button class="btn-secondary" onclick="alert('Email added to whitelist.')">Add Email</button>
+          </div>
+
+          <button class="btn-save" onclick="showSuccessMsg('Whitelist updated.')">Save Whitelist</button>
+        </div>
+
+        <div class="form-section">
+          <h3>Test Email</h3>
+          <p style="color: var(--muted); font-size: 13px; margin: 0 0 16px 0;">Send a test email to verify SMTP configuration.</p>
+          
+          <div style="display: flex; gap: 8px;">
+            <input type="email" class="form-input" placeholder="Test recipient (must be whitelisted)" style="flex: 1;">
+            <button class="btn-secondary" onclick="alert('Test email sent!')">Send Test</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Audit Log -->
+      <div id="audit" class="tab-pane">
+        <div style="margin-bottom: 16px;">
+          <input type="text" class="form-input" placeholder="Search audit log..." style="max-width: 300px;">
+        </div>
+
+        <div class="audit-log-entry">
+          <div class="log-timestamp">2026-07-19 14:35 UTC</div>
+          <div class="log-user">Victoria Milan</div>
+          <div class="log-action">APPROVED opportunity REF-066188</div>
+          <div class="log-reason">"Strategic opportunity, strong fit for cloud services practice"</div>
+        </div>
+
+        <div class="audit-log-entry">
+          <div class="log-timestamp">2026-07-19 10:22 UTC</div>
+          <div class="log-user">Mark</div>
+          <div class="log-action">REJECTED opportunity REF-066189</div>
+          <div class="log-reason">"Out of scope — capital works, not IT services"</div>
+        </div>
+
+        <div class="audit-log-entry">
+          <div class="log-timestamp">2026-07-18 16:45 UTC</div>
+          <div class="log-user">Victoria Milan</div>
+          <div class="log-action">Updated Gate 5 CPV Pass List</div>
+          <div class="log-reason">"Added 72xxx range; client feedback on inferred fit"</div>
+        </div>
+
+        <div class="audit-log-entry">
+          <div class="log-timestamp">2026-07-18 09:15 UTC</div>
+          <div class="log-user">Kanvesh</div>
+          <div class="log-action">MARKED for escalation opportunity REF-066201</div>
+          <div class="log-reason">"SC/DV clearance gate flag; requires Victoria decision on defense sector"</div>
+        </div>
+
+        <div class="audit-log-entry">
+          <div class="log-timestamp">2026-07-17 15:30 UTC</div>
+          <div class="log-user">Hammad</div>
+          <div class="log-action">APPROVED Phase 2 assessment REF-066199</div>
+          <div class="log-reason">"Assessment thorough and accurate"</div>
+        </div>
+
+        <div style="text-align: center; margin-top: 24px; color: var(--muted); font-size: 13px;">
+          <a href="#" style="color: var(--brand-accent); text-decoration: none;">Load earlier entries</a>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="success-msg" id="successMsg"></div>
+
+  <script>
+    function switchAdminTab(e, tabName) {
+      document.querySelectorAll('.tab-pane').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabName).classList.add('active');
+      e.target.classList.add('active');
+    }
+
+    function showSuccessMsg(text) {
+      const msg = document.getElementById('successMsg');
+      msg.textContent = '✓ ' + text;
+      msg.classList.add('show');
+      setTimeout(() => msg.classList.remove('show'), 3000);
+    }
+
+    // Remove tag functionality
+    document.querySelectorAll('.tag-remove').forEach(btn => {
+      btn.addEventListener('click', function() {
+        this.closest('.tag').remove();
+      });
+    });
+  </script>
+</body>
+</html>

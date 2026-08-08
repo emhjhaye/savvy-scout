@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Savvy Scout — Sign In</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(135deg, #F3F4F6 0%, #FAFBFC 100%);
+      color: #1A2C4A;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .login-container {
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 48px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+      border: 1px solid #E5E7EB;
+    }
+
+    .logo-section {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .logo-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .logo-text {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1A2C4A;
+      margin-bottom: 6px;
+    }
+
+    .logo-tagline {
+      font-size: 13px;
+      color: #6B7280;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #6B7280;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      background: #FAFBFC;
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      color: #1A2C4A;
+      font-size: 14px;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    input::placeholder {
+      color: #9CA3AF;
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: #FF2D58;
+      background: #FFFFFF;
+      box-shadow: 0 0 0 3px rgba(255, 45, 88, 0.1);
+    }
+
+    .signin-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: #FF2D58;
+      border: none;
+      border-radius: 8px;
+      color: #FFFFFF;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 20px;
+    }
+
+    .signin-btn:hover {
+      background: #E6254A;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(255, 45, 88, 0.2);
+    }
+
+    .signin-btn:active {
+      transform: translateY(0);
+    }
+
+    .demo-users {
+      background: #F0FDF4;
+      border: 1px solid #DCFCE7;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+
+    .demo-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #10B981;
+      margin-bottom: 10px;
+      letter-spacing: 0.5px;
+    }
+
+    .demo-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .demo-btn {
+      padding: 8px 12px;
+      background: #FFFFFF;
+      border: 1px solid #DCFCE7;
+      border-radius: 6px;
+      color: #10B981;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .demo-btn:hover {
+      background: #F0FDF4;
+      border-color: #10B981;
+    }
+
+    .user-list {
+      background: #F9FAFB;
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .user-list-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #6B7280;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .user-options {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .user-option {
+      padding: 10px 12px;
+      background: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      color: #1A2C4A;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .user-option:hover {
+      background: #F3F4F6;
+      border-color: #FF2D58;
+      color: #FF2D58;
+    }
+
+    .user-role {
+      font-size: 10px;
+      color: #9CA3AF;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: #9CA3AF;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 480px) {
+      .login-container {
+        padding: 32px 24px;
+      }
+
+      .logo-text {
+        font-size: 24px;
+      }
+
+      .demo-buttons {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="logo-section">
+      <div class="logo-icon">🎯</div>
+      <div class="logo-text">Savvy Scout</div>
+      <div class="logo-tagline">Bid Pipeline Automation Engine</div>
+    </div>
+
+    <form onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter your username" value="mark" required autofocus>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter your password" value="password" required>
+      </div>
+
+      <button type="submit" class="signin-btn">Sign In</button>
+    </form>
+
+    <!-- Demo Access -->
+    <div class="demo-users">
+      <div class="demo-title">⚡ Quick Access (Demo)</div>
+      <div class="demo-buttons">
+        <button class="demo-btn" onclick="quickLogin('mark')">Mark</button>
+        <button class="demo-btn" onclick="quickLogin('kanvesh')">Kanvesh</button>
+        <button class="demo-btn" onclick="quickLogin('hammad')">Hammad</button>
+        <button class="demo-btn" onclick="quickLogin('victoria')">Victoria</button>
+      </div>
+    </div>
+
+    <!-- Available Users -->
+    <div class="user-list">
+      <div class="user-list-title">Available Test Accounts</div>
+      <div class="user-options">
+        <div class="user-option" onclick="quickLogin('mark')">
+          <span>Mark Johnson</span>
+          <span class="user-role">Sector Owner</span>
+        </div>
+        <div class="user-option" onclick="quickLogin('kanvesh')">
+          <span>Kanvesh Patel</span>
+          <span class="user-role">Sector Owner</span>
+        </div>
+        <div class="user-option" onclick="quickLogin('hammad')">
+          <span>Hammad Ahmed</span>
+          <span class="user-role">Sector Owner</span>
+        </div>
+        <div class="user-option" onclick="quickLogin('victoria')">
+          <span>Victoria Milan</span>
+          <span class="user-role">Bid Director</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      All passwords are "password" for demo purposes
+    </div>
+  </div>
+
+  <script>
+    function handleLogin(event) {
+      event.preventDefault();
+      const username = document.getElementById('username').value.toLowerCase();
+      const password = document.getElementById('password').value;
+
+      const validUsers = {
+        mark: 'password',
+        kanvesh: 'password',
+        hammad: 'password',
+        victoria: 'password'
+      };
+
+      if (validUsers[username] && validUsers[username] === password) {
+        quickLogin(username);
+      } else {
+        alert('Invalid credentials. Try: mark, kanvesh, hammad, or victoria (password: password)');
+      }
+    }
+
+    function quickLogin(userName) {
+      localStorage.setItem('currentUser', userName);
+      window.location.href = 'board-main-v2.html';
+    }
+  </script>
+</body>
+</html>

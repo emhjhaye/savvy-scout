@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Savvy Scout logo - badge">
+  <rect x="6" y="6" width="108" height="108" rx="18" fill="#00BFA6"/>
+  <g transform="translate(20,20) scale(0.7)">
+    <!-- small bar chart inside -->
+    <rect x="6" y="40" width="10" height="30" rx="2" fill="#071428"/>
+    <rect x="24" y="28" width="10" height="42" rx="2" fill="#071428"/>
+    <rect x="42" y="16" width="10" height="54" rx="2" fill="#071428"/>
+    <path d="M62 54 L76 24" stroke="#FF2D58" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

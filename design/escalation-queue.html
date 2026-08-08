@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Escalation Queue</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    .app { display: flex; min-height: 100vh; }
+    .logo { font-family: var(--font-heading); font-weight: 700; color: var(--brand-accent); margin-bottom: 18px; }
+    .main { flex: 1; padding: 32px; }
+    
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .header-left h2 { margin: 0 0 6px 0; }
+    .header-left .subheading { color: var(--muted); font-size: 14px; }
+    .header-right { display: flex; gap: 12px; }
+    
+    .filters { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .filter-chip {
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .filter-chip:hover { background: rgba(255,255,255,0.12); }
+    .filter-chip.active { background: var(--brand-accent); border-color: var(--brand-accent); color: #fff; }
+    
+    /* Queue Item */
+    .queue-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: 1fr 200px 200px 180px;
+      gap: 20px;
+      align-items: center;
+    }
+    .queue-item:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.12); }
+    
+    .queue-item-main h3 { margin: 0 0 8px 0; font-size: 15px; font-weight: 600; }
+    .ref { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .buyer { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    
+    .queue-item-trigger {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .trigger-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .trigger-gate { background: rgba(255,180,122,0.2); color: #FFB47A; }
+    .trigger-owner { background: rgba(0,191,166,0.2); color: #00BFA6; }
+    
+    .queue-item-owner { color: var(--muted); font-size: 13px; }
+    
+    .queue-item-time {
+      text-align: right;
+      color: var(--muted);
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .action-btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-view { background: rgba(255,255,255,0.08); color: var(--white); }
+    .btn-view:hover { background: rgba(255,255,255,0.12); }
+    
+    /* Brief View Panel (sidebar) */
+    .brief-panel {
+      position: fixed;
+      right: -500px;
+      top: 0;
+      width: 500px;
+      height: 100vh;
+      background: var(--bg-dark);
+      border-left: 1px solid rgba(255,255,255,0.08);
+      overflow-y: auto;
+      transition: right 0.3s;
+      z-index: 100;
+    }
+    .brief-panel.open { right: 0; }
+    
+    .brief-header {
+      padding: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(7, 20, 40, 0.5);
+      position: sticky;
+      top: 0;
+    }
+    .brief-header h3 { margin: 0; font-size: 16px; }
+    .brief-close { cursor: pointer; font-size: 24px; color: var(--muted); }
+    
+    .brief-content {
+      padding: 24px;
+    }
+    .brief-section {
+      margin-bottom: 24px;
+    }
+    .brief-section h4 { margin: 0 0 12px 0; font-size: 13px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .brief-section p { margin: 0 0 12px 0; font-size: 14px; line-height: 1.6; }
+    .brief-section ul { margin: 0; padding-left: 20px; }
+    .brief-section li { margin-bottom: 8px; font-size: 14px; line-height: 1.5; }
+    
+    /* Decision Buttons */
+    .decision-buttons {
+      padding: 24px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: sticky;
+      bottom: 0;
+      background: rgba(7, 20, 40, 0.5);
+    }
+    .decision-btn {
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .decision-btn.approve { background: #00BFA6; color: #fff; }
+    .decision-btn.approve:hover { opacity: 0.9; }
+    .decision-btn.park { background: #FFB47A; color: #fff; }
+    .decision-btn.park:hover { opacity: 0.9; }
+    .decision-btn.reject { background: #FF4D4F; color: #fff; }
+    .decision-btn.reject:hover { opacity: 0.9; }
+    
+    .overlay {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 99;
+    }
+    .overlay.active { display: block; }
+    
+    /* Modal */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-dark); border-radius: 12px; padding: 32px; max-width: 500px; width: 90%; }
+    .modal-header { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+    .modal-close { float: right; cursor: pointer; font-size: 20px; color: var(--muted); }
+    textarea { width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; background: rgba(255,255,255,0.02); color: var(--white); font-family: inherit; resize: vertical; min-height: 100px; }
+    
+    @media (max-width: 1200px) {
+      .queue-item { grid-template-columns: 1fr 150px; }
+      .queue-item-trigger, .queue-item-owner, .action-buttons { grid-column: span 1; }
+      .brief-panel { width: 100%; right: -100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="logo">Savvy Scout</div>
+      <ul class="nav">
+        <li><a href="dashboard-home.html">Dashboard</a></li>
+        <li><a href="#">Queues</a></li>
+        <li class="active"><a href="#">Escalations</a></li>
+        <li><a href="#">Admin</a></li>
+      </ul>
+      <div style="margin-top:20px;color:var(--muted);font-size:13px">Logged in as Victoria</div>
+    </aside>
+
+    <main class="main">
+      <div class="header-section">
+        <div class="header-left">
+          <h2>Escalations Awaiting Your Decision</h2>
+          <div class="subheading">FLAGs from gates and owner-marked items needing bid/no-bid direction</div>
+        </div>
+        <div class="header-right">
+          <div style="text-align: right;">
+            <div style="font-weight: 700; font-size: 20px; color: var(--brand-accent);">7</div>
+            <div style="font-size: 12px; color: var(--muted);">Total pending</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="filters">
+        <div class="filter-chip active" onclick="filterQueue(this, 'all')">All (7)</div>
+        <div class="filter-chip" onclick="filterQueue(this, 'gate-flag')">Gate FLAGs (4)</div>
+        <div class="filter-chip" onclick="filterQueue(this, 'owner-marked')">Owner-marked (3)</div>
+        <div class="filter-chip" onclick="filterQueue(this, 'urgent')">Urgent (< 7 days)</div>
+      </div>
+
+      <div id="queue-container">
+        <!-- Escalation Queue Items -->
+        <div class="queue-item" data-filter="gate-flag">
+          <div class="queue-item-main">
+            <div class="ref">REF-066189</div>
+            <h3>Office Refurbishment Programme — Northern Facilities Hub</h3>
+            <div class="buyer">Buyer: NHS Northern Trust • Deadline: 2026-08-22</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-gate">Gate 2 FLAG</span>
+            <span style="font-size: 12px; color: var(--muted);">Type: Capital works, not bespoke dev</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Hammad</strong><br>
+            <span style="font-size: 12px;">Flagged 3 days ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 3 days</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066189')">View Brief</button>
+          </div>
+        </div>
+
+        <div class="queue-item" data-filter="gate-flag">
+          <div class="queue-item-main">
+            <div class="ref">REF-066201</div>
+            <h3>Security Clearance Requirements — Defense Procurement</h3>
+            <div class="buyer">Buyer: Ministry of Defence • Deadline: 2026-09-10</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-gate">Gate 1 FLAG</span>
+            <span style="font-size: 12px; color: var(--muted);">SC or DV clearance required</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Kanvesh</strong><br>
+            <span style="font-size: 12px;">Flagged 5 days ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 5 days</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066201')">View Brief</button>
+          </div>
+        </div>
+
+        <div class="queue-item" data-filter="gate-flag">
+          <div class="queue-item-main">
+            <div class="ref">REF-066210</div>
+            <h3>Managed Services Contract — Ambiguous CPV Codes</h3>
+            <div class="buyer">Buyer: Large Finance Organization • Deadline: 2026-08-28</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-gate">Gate 5 FLAG</span>
+            <span style="font-size: 12px; color: var(--muted);">Unlisted CPV codes — unclear fit</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Mark</strong><br>
+            <span style="font-size: 12px;">Flagged 1 day ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 1 day</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066210')">View Brief</button>
+          </div>
+        </div>
+
+        <div class="queue-item" data-filter="gate-flag">
+          <div class="queue-item-main">
+            <div class="ref">REF-066215</div>
+            <h3>Global SI Prime Incumbent — £800M+ Technology Services</h3>
+            <div class="buyer">Buyer: Large Central Government Body • Deadline: 2026-09-05</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-gate">Filter 3 FLAG</span>
+            <span style="font-size: 12px; color: var(--muted);">Massive scale, incumbent SI pool</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Kanvesh</strong><br>
+            <span style="font-size: 12px;">Flagged 2 days ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 2 days</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066215')">View Brief</button>
+          </div>
+        </div>
+
+        <div class="queue-item" data-filter="owner-marked">
+          <div class="queue-item-main">
+            <div class="ref">REF-066188</div>
+            <h3>Cloud Migration: Modernising Council Digital Services Across 15 Sites</h3>
+            <div class="buyer">Buyer: City of London Corporation • Deadline: 2026-08-15</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-owner">Mark Marked</span>
+            <span style="font-size: 12px; color: var(--muted);">Strategic opportunity — capacity check needed</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Mark</strong><br>
+            <span style="font-size: 12px;">Marked 6 days ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 6 days</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066188')">View Brief</button>
+          </div>
+        </div>
+
+        <div class="queue-item" data-filter="owner-marked">
+          <div class="queue-item-main">
+            <div class="ref">REF-066199</div>
+            <h3>Healthcare AI Platform Partnership — Research Authority</h3>
+            <div class="buyer">Buyer: UK Health Research Board • Deadline: 2026-08-31</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-owner">Hammad Marked</span>
+            <span style="font-size: 12px; color: var(--muted);">Pioneering AI in health — strategic decision</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Hammad</strong><br>
+            <span style="font-size: 12px;">Marked 4 days ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 4 days</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066199')">View Brief</button>
+          </div>
+        </div>
+
+        <div class="queue-item" data-filter="owner-marked">
+          <div class="queue-item-main">
+            <div class="ref">REF-066207</div>
+            <h3>Financial Services Cloud Transformation — London Trading Desk</h3>
+            <div class="buyer">Buyer: Global Investment Bank (London Office) • Deadline: 2026-09-02</div>
+          </div>
+          <div class="queue-item-trigger">
+            <span class="trigger-badge trigger-owner">Kanvesh Marked</span>
+            <span style="font-size: 12px; color: var(--muted);">High-value, compliance-heavy, reference potential</span>
+          </div>
+          <div class="queue-item-owner">
+            <strong>Kanvesh</strong><br>
+            <span style="font-size: 12px;">Marked 2 days ago</span>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="queue-item-time">
+              <div>⏱ 2 days</div>
+            </div>
+            <button class="action-btn btn-view" onclick="openBrief('066207')">View Brief</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Brief Panel (slides in from right) -->
+  <div class="brief-panel" id="briefPanel">
+    <div class="brief-header">
+      <h3>Escalation Brief</h3>
+      <span class="brief-close" onclick="closeBrief()">&times;</span>
+    </div>
+    <div class="brief-content" id="briefContent">
+      <!-- Populated by JavaScript -->
+    </div>
+    <div class="decision-buttons">
+      <button class="decision-btn approve" onclick="openDecisionModal('approve')">✓ APPROVE</button>
+      <button class="decision-btn park" onclick="openDecisionModal('park')">⏸ PARK</button>
+      <button class="decision-btn reject" onclick="openDecisionModal('reject')">✗ REJECT</button>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay" onclick="closeBrief()"></div>
+
+  <!-- Decision Modal -->
+  <div class="modal" id="decisionModal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeDecisionModal()">&times;</span>
+      <div class="modal-header" id="decisionTitle">Approve This Opportunity?</div>
+      <p style="color: var(--muted);">Your decision will be logged and the opportunity status will be updated.</p>
+      <p style="color: var(--muted);"><strong>Decision reason (required):</strong></p>
+      <textarea id="decisionReason" placeholder="Enter your reasoning here..."></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button id="decisionButton" class="decision-btn approve" style="flex: 1;" onclick="submitDecision()">Confirm</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeDecisionModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentBriefId = null;
+    let currentDecision = null;
+
+    const briefData = {
+      '066188': {
+        ref: 'REF-066188',
+        title: 'Cloud Migration: Modernising Council Digital Services Across 15 Sites',
+        buyer: 'City of London Corporation',
+        value: '£1.2M–£1.8M',
+        deadline: '2026-08-15',
+        owner: 'Mark',
+        trigger: 'Owner-marked for strategic review',
+        sections: [
+          { heading: 'Summary', content: 'Strategic fit opportunity in local government cloud services. Strong capability alignment but requires resource commitment.' },
+          { heading: 'Gate Outcomes', content: 'All gates: PASS' },
+          { heading: 'Assessment', content: 'Capability fit: HIGH | Right to win: MEDIUM | Overall: PURSUE' },
+          { heading: 'Risks', content: 'Competitive landscape includes SI primes (Accenture, Capgemini). Proposal effort required: 4–5 weeks.' },
+          { heading: 'Recommendation', content: 'Recommend active pursuit. Strategic reference site value for local government practice.' }
+        ]
+      },
+      '066189': {
+        ref: 'REF-066189',
+        title: 'Office Refurbishment Programme — Northern Facilities Hub',
+        buyer: 'NHS Northern Trust',
+        value: '£500K–£800K',
+        deadline: '2026-08-22',
+        owner: 'Hammad',
+        trigger: 'Gate 2 FLAG: Type of work',
+        sections: [
+          { heading: 'Issue', content: 'Gate 2 flagged: Primarily capital works refurbishment, not bespoke development. Does not fit Trifork service lines.' },
+          { heading: 'Details', content: 'Project scope: Refurbish 8 office locations with new furniture, partition walls, AV systems. No software or integration component.' },
+          { heading: 'Recommendation', content: 'REJECT. Out of scope for Trifork. No IT services component.' }
+        ]
+      },
+      '066201': {
+        ref: 'REF-066201',
+        title: 'Security Clearance Requirements — Defense Procurement',
+        buyer: 'Ministry of Defence',
+        value: '£2M–£3M',
+        deadline: '2026-09-10',
+        owner: 'Kanvesh',
+        trigger: 'Gate 1 FLAG: SC/DV clearance',
+        sections: [
+          { heading: 'Clearance Requirement', content: 'Tender requires SC (Security Check) or DV (Developed Vetting) clearance for delivery team members.' },
+          { heading: 'Trifork Status', content: 'Trifork currently has no team members with active clearance. Obtaining clearance requires background check (3–6 months).' },
+          { heading: 'Decision Required', content: 'Approve investment in team clearance for this sector (defense), or park this opportunity?' },
+          { heading: 'Opportunity Value', content: '£2M–£3M. Repeat opportunity likelihood high if Trifork enters defense market.' }
+        ]
+      },
+      '066210': {
+        ref: 'REF-066210',
+        title: 'Managed Services Contract — Ambiguous CPV Codes',
+        buyer: 'Large Finance Organization',
+        value: '£1.5M–£2M',
+        deadline: '2026-08-28',
+        owner: 'Mark',
+        trigger: 'Gate 5 FLAG: CPV codes',
+        sections: [
+          { heading: 'CPV Issue', content: 'Notice lists CPV codes 50000000 (services not elsewhere specified) and 98000000 (other services). These are not on pass, inferred, or fail lists.' },
+          { heading: 'Scope Ambiguity', content: 'Tender description suggests IT services but CPV coding is unclear. Could be for software, training, or support services.' },
+          { heading: 'Recommendation Needed', content: 'Clarify with buyer on service type, or board decision on speculative bid against unclear CPV?' }
+        ]
+      },
+      '066215': {
+        ref: 'REF-066215',
+        title: 'Global SI Prime Incumbent — £800M+ Technology Services',
+        buyer: 'Large Central Government Body',
+        value: '£800M–£1.2B',
+        deadline: '2026-09-05',
+        owner: 'Kanvesh',
+        trigger: 'Filter 3 FLAG: Scale & incumbents',
+        sections: [
+          { heading: 'Scale Issue', content: 'Opportunity value £800M–£1.2B (far exceeds £500M threshold). Buyer ecosystem dominated by global SI primes: IBM, Capgemini, Accenture, Atos, Capita, Leidos, BAE AI, CGI, Cognizant.' },
+          { heading: 'Market Reality', content: 'Trifork is mid-market player. Win probability in this context: extremely low (<5%).' },
+          { heading: 'Decision', content: 'Pursue (track but low priority), or park?' }
+        ]
+      },
+      '066199': {
+        ref: 'REF-066199',
+        title: 'Healthcare AI Platform Partnership — Research Authority',
+        buyer: 'UK Health Research Board',
+        value: '£3M–£5M',
+        deadline: '2026-08-31',
+        owner: 'Hammad',
+        trigger: 'Owner-marked: Strategic AI play',
+        sections: [
+          { heading: 'Strategic Value', content: 'Pioneering AI in healthcare research. Opportunity to establish Trifork brand in emerging market segment.' },
+          { heading: 'Risks', content: 'AI delivery is nascent; regulatory/compliance landscape evolving. Requires significant R&D investment.' },
+          { heading: 'Assessment', content: 'Capability: MEDIUM (would need to invest in team or partnerships). Win probability: MEDIUM.' },
+          { heading: 'Recommendation', content: 'Strategic decision: is healthcare AI a growth area for Trifork? If yes, pursue. If no, park.' }
+        ]
+      },
+      '066207': {
+        ref: 'REF-066207',
+        title: 'Financial Services Cloud Transformation — London Trading Desk',
+        buyer: 'Global Investment Bank (London Office)',
+        value: '£4M–£6M',
+        deadline: '2026-09-02',
+        owner: 'Kanvesh',
+        trigger: 'Owner-marked: High-value reference',
+        sections: [
+          { heading: 'Opportunity', content: 'Cloud transformation for trading desk infrastructure. High-value (£4M–£6M). Potential for 12–24 month engagement.' },
+          { heading: 'Strategic Fit', content: 'Reference site in financial services. Potential gateway to broader banking sector work.' },
+          { heading: 'Delivery Risks', content: 'High security and compliance bar (FCA regulated). Requires certified team. Timeline: aggressive (ITT to award ~8 weeks).' },
+          { heading: 'Assessment', content: 'Capability: HIGH | Win probability: MEDIUM-HIGH (strong fit).' },
+          { heading: 'Recommendation', content: 'High priority pursue. Recommend resourceing proposal team immediately.' }
+        ]
+      }
+    };
+
+    function filterQueue(el, filter) {
+      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+
+      if (filter === 'all') {
+        document.querySelectorAll('.queue-item').forEach(i => i.style.display = '');
+      } else if (filter === 'urgent') {
+        document.querySelectorAll('.queue-item').forEach(i => {
+          const days = parseInt(i.querySelector('.queue-item-time > div').textContent);
+          i.style.display = days < 7 ? '' : 'none';
+        });
+      } else {
+        document.querySelectorAll('.queue-item').forEach(i => {
+          i.style.display = i.dataset.filter === filter ? '' : 'none';
+        });
+      }
+    }
+
+    function openBrief(id) {
+      currentBriefId = id;
+      const brief = briefData[id];
+      let html = `
+        <div class="brief-section">
+          <h4>${brief.ref}</h4>
+          <p><strong>${brief.title}</strong></p>
+        </div>
+        <div class="brief-section">
+          <h4>Details</h4>
+          <p><strong>Buyer:</strong> ${brief.buyer}</p>
+          <p><strong>Value:</strong> ${brief.value}</p>
+          <p><strong>Deadline:</strong> ${brief.deadline}</p>
+          <p><strong>Owner:</strong> ${brief.owner}</p>
+          <p><strong>Trigger:</strong> ${brief.trigger}</p>
+        </div>
+      `;
+      
+      brief.sections.forEach(sec => {
+        html += `<div class="brief-section">
+          <h4>${sec.heading}</h4>
+          <p>${sec.content}</p>
+        </div>`;
+      });
+
+      document.getElementById('briefContent').innerHTML = html;
+      document.getElementById('briefPanel').classList.add('open');
+      document.getElementById('overlay').classList.add('active');
+    }
+
+    function closeBrief() {
+      document.getElementById('briefPanel').classList.remove('open');
+      document.getElementById('overlay').classList.remove('active');
+    }
+
+    function openDecisionModal(decision) {
+      currentDecision = decision;
+      const titles = {
+        approve: 'Approve This Opportunity?',
+        park: 'Park This Opportunity?',
+        reject: 'Reject This Opportunity?'
+      };
+      document.getElementById('decisionTitle').textContent = titles[decision];
+      document.getElementById('decisionButton').className = `decision-btn ${decision}`;
+      document.getElementById('decisionButton').textContent = decision === 'approve' ? '✓ APPROVE' : decision === 'park' ? '⏸ PARK' : '✗ REJECT';
+      document.getElementById('decisionModal').classList.add('active');
+    }
+
+    function closeDecisionModal() {
+      document.getElementById('decisionModal').classList.remove('active');
+    }
+
+    function submitDecision() {
+      const reason = document.getElementById('decisionReason').value;
+      if (!reason.trim()) {
+        alert('Please provide your reasoning.');
+        return;
+      }
+      alert(`Decision submitted: ${currentDecision.toUpperCase()}\nBrief #${currentBriefId} updated. Opportunity status changed.`);
+      closeDecisionModal();
+      closeBrief();
+    }
+  </script>
+</body>
+</html>

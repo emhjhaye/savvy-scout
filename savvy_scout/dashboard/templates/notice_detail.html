@@ -1,0 +1,530 @@
+{% extends "base.html" %}
+{% block title %}{{ notice['ref'] }} — Savvy Scout{% endblock %}
+{% block page_title %}Notice Detail{% endblock %}
+
+{% block content %}
+
+{# ---- Back / Prev / Next nav ---- #}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+  <a href="{{ url_for('queues.index') }}" class="btn btn-secondary btn-sm">← Back to Queue</a>
+
+  <div style="display: flex; align-items: center; gap: 8px;">
+    {% if queue_position and queue_total %}
+      <span style="font-size: 12px; color: var(--text-muted);">{{ queue_position }} of {{ queue_total }}</span>
+    {% endif %}
+    {% if prev_id %}
+      <a href="{{ url_for('queues.notice_detail', notice_id=prev_id) }}" class="btn btn-secondary btn-sm">← Prev</a>
+    {% else %}
+      <span class="btn btn-secondary btn-sm" style="opacity: 0.35; cursor: default;">← Prev</span>
+    {% endif %}
+    {% if next_id %}
+      <a href="{{ url_for('queues.notice_detail', notice_id=next_id) }}" class="btn btn-secondary btn-sm">Next →</a>
+    {% else %}
+      <span class="btn btn-secondary btn-sm" style="opacity: 0.35; cursor: default;">Next →</span>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- Notice header card ---- #}
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div style="font-family: monospace; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">{{ notice['ref'] }} · {{ notice['source'] }}</div>
+      <h2 style="font-size: 20px; font-weight: 800; color: var(--navy);">{{ notice['title'] }}</h2>
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      {# Status badge #}
+      {% set s = notice['status'] %}
+      {% if s == 'TO_REVIEW' %}
+        <span class="badge badge-flag">To Review</span>
+      {% elif s == 'HANDOFF' %}
+        <span class="badge badge-inferred">Handoff</span>
+      {% elif s == 'AWAITING_PHASE2_APPROVAL' %}
+        <span class="badge badge-inferred">Phase 2 Pending</span>
+      {% elif s == 'CAPTURE_BRIEF_DRAFTED' %}
+        <span class="badge badge-pass">Capture Brief Drafted</span>
+      {% elif s == 'ESCALATED_TO_VICTORIA' %}
+        <span class="badge badge-flag">Escalated</span>
+      {% elif s == 'APPROVED' or s == 'ACTIVE' %}
+        <span class="badge badge-pass">{{ s }}</span>
+      {% elif s == 'DOCS_DOWNLOADED' %}
+        <span class="badge badge-pass">Docs Downloaded</span>
+      {% elif s == 'CALENDARED' %}
+        <span class="badge badge-pass">Calendared</span>
+      {% elif s == 'REJECTED' %}
+        <span class="badge badge-fail">Rejected</span>
+      {% elif s == 'PARKED' %}
+        <span class="badge badge-unknown">Parked</span>
+      {% elif s == 'MONITORING' %}
+        <span class="badge badge-unknown">Monitoring</span>
+      {% else %}
+        <span class="badge badge-unknown">{{ s }}</span>
+      {% endif %}
+      {% if notice['uk_stage'] and notice['uk_stage'] != 'UNVERIFIED' %}
+        <span class="badge badge-stage">{{ notice['uk_stage'] }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card-body">
+    {# Key metadata grid #}
+    <div class="detail-meta">
+      <div class="meta-item">
+        <div class="meta-label">Buyer</div>
+        <div class="meta-value">{{ notice['buyer'] or 'UNVERIFIED' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Owner</div>
+        <div class="meta-value">{{ notice['owner'] or '—' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Sector</div>
+        <div class="meta-value">{{ notice['sector'] or '—' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Indicative Value</div>
+        <div class="meta-value">{{ notice['indicative_value'] or 'Not stated' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Deadline</div>
+        <div class="meta-value">{{ notice['deadline'][:10] if notice['deadline'] else '—' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">UK Stage</div>
+        <div class="meta-value">{{ notice['uk_stage'] or 'UNVERIFIED' }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">CPV Code</div>
+        <div class="meta-value" style="font-family: monospace;">{{ notice['cpv_primary'] or '—' }}{% if notice['cpv_primary_inferred'] %} <span class="badge badge-inferred">Inferred</span>{% endif %}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">First Seen</div>
+        <div class="meta-value">{{ notice['first_seen_at'][:10] if notice['first_seen_at'] else '—' }}</div>
+      </div>
+    </div>
+
+    {# Action buttons for current status #}
+    {% set s = notice['status'] %}
+    {% if s in ('TO_REVIEW', 'HANDOFF', 'AWAITING_PHASE2_APPROVAL') %}
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 16px; background: var(--surface-alt); border-radius: 8px; margin-top: 8px;">
+      <strong style="font-size: 13px; color: var(--navy); margin-right: 8px;">Actions:</strong>
+
+      <form method="post" action="{{ url_for('queues.approve', notice_id=notice['id']) }}" style="display:inline">
+        <button type="submit" class="btn btn-approve" title="{% if s == 'AWAITING_PHASE2_APPROVAL' %}Sends to Victoria for her decision{% endif %}">✓ Approve</button>
+      </form>
+
+      <span class="action-group" style="display: inline-flex; gap: 4px; align-items: center;">
+        <button class="btn btn-reject show-input-btn" onclick="toggleAction(this, 'det-reject')">✕ Reject</button>
+        <form method="post" action="{{ url_for('queues.reject', notice_id=notice['id']) }}" style="display:inline">
+          <input type="text" name="reason" class="action-input" id="det-reject" placeholder="Reason required" required style="width: 200px;">
+          <button type="submit" class="btn btn-reject submit-btn" style="display:none">Submit</button>
+        </form>
+      </span>
+
+      <span class="action-group" style="display: inline-flex; gap: 4px; align-items: center;">
+        <button class="btn btn-park show-input-btn" onclick="toggleAction(this, 'det-park')">⊙ Park</button>
+        <form method="post" action="{{ url_for('queues.park', notice_id=notice['id']) }}" style="display:inline">
+          <input type="text" name="reason" class="action-input" id="det-park" placeholder="Reason required" required style="width: 200px;">
+          <button type="submit" class="btn btn-park submit-btn" style="display:none">Submit</button>
+        </form>
+      </span>
+
+      {% if s == 'AWAITING_PHASE2_APPROVAL' %}
+      <span class="action-group" style="display: inline-flex; gap: 4px; align-items: center;">
+        <button class="btn btn-victoria show-input-btn" onclick="toggleAction(this, 'det-vic')">⬆ Victoria</button>
+        <form method="post" action="{{ url_for('queues.mark_victoria_decision', notice_id=notice['id']) }}" style="display:inline">
+          <input type="text" name="reason" class="action-input" id="det-vic" placeholder="Why escalate?" required style="width: 200px;">
+          <button type="submit" class="btn btn-victoria submit-btn" style="display:none">Submit</button>
+        </form>
+      </span>
+      {% endif %}
+    </div>
+    {% elif s == 'PHASE2_SCOPED' %}
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 16px; background: rgba(139,92,246,0.1); border-radius: 8px; border: 1px solid rgba(139,92,246,0.3); margin-top: 8px;">
+      <strong style="font-size: 13px; color: var(--navy); margin-right: 8px;">Waiting for Phase 2 scope read.</strong>
+      <span style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">The extracted procurement details above already give enough to review without an AI read.</span>
+      <form method="post" action="{{ url_for('queues.advance_phase2_manual_single', notice_id=notice['id']) }}" style="display:inline">
+        <button type="submit" class="btn btn-secondary">Proceed to Phase 2 approval (skip AI read)</button>
+      </form>
+    </div>
+    {% elif s == 'ESCALATED_TO_VICTORIA' and current_user.is_victoria %}
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 16px; background: rgba(245,158,11,0.1); border-radius: 8px; border: 1px solid rgba(245,158,11,0.3); margin-top: 8px;">
+      <strong style="font-size: 13px; color: #FBBF24; margin-right: 8px;">⬆ Victoria's Decision:</strong>
+      <form method="post" action="{{ url_for('queues.victoria_decision', notice_id=notice['id']) }}" style="display:inline-flex; align-items:center; gap: 8px;">
+        <select name="decision" style="padding: 7px 10px; font-size: 13px;">
+          <option value="approve">Approve</option>
+          <option value="park">Park</option>
+          <option value="reject">Reject</option>
+        </select>
+        <input type="text" name="reason" placeholder="Reason (optional)" style="width: 220px; padding: 7px 10px; font-size: 13px;">
+        <button type="submit" class="btn btn-approve">Submit Decision</button>
+      </form>
+      {% if escalation_brief and not escalation_brief['emailed_at'] %}
+        <form method="post" action="{{ url_for('queues.send_escalation_email', notice_id=notice['id']) }}" style="display:inline">
+          <button type="submit" class="btn btn-secondary">📧 Send Brief Email</button>
+        </form>
+      {% elif escalation_brief and escalation_brief['emailed_at'] %}
+        <span style="font-size: 12px; color: var(--success);">✓ Brief emailed {{ escalation_brief['emailed_at'][:10] }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- Pipeline stage tracker: same fixed shape on every notice, so the ---- #}
+{# page doesn't look "different every time" -- only the done/current/     #}
+{# skipped/pending marks change. #}
+<div class="card">
+  <div class="card-header">
+    <h2>Pipeline Progress</h2>
+  </div>
+  <div class="card-body">
+    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+      {% for stage in pipeline_stages %}
+      <div style="flex: 1; min-width: 150px; padding: 10px 12px; border-radius: 8px;
+                  {% if stage.state == 'done' %}background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3);
+                  {% elif stage.state == 'current' %}background: rgba(29,78,216,0.12); border: 1px solid rgba(29,78,216,0.4);
+                  {% elif stage.state == 'skipped' %}background: rgba(148,163,184,0.08); border: 1px dashed var(--border);
+                  {% else %}background: var(--surface-alt); border: 1px solid var(--border); opacity: 0.55;
+                  {% endif %}">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+                    color: {% if stage.state == 'done' %}#059669{% elif stage.state == 'current' %}#1D4ED8{% elif stage.state == 'skipped' %}var(--text-muted){% else %}var(--text-muted){% endif %};">
+          {% if stage.state == 'done' %}✓{% elif stage.state == 'current' %}●{% elif stage.state == 'skipped' %}⊘{% else %}○{% endif %}
+          {{ stage.label }}
+        </div>
+        {% if stage.detail %}
+        <div style="font-size: 12px; color: var(--text); margin-top: 4px;">{{ stage.detail }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{# ---- Bid Documents: real ITT/PQQ/spec/clarification files, extracted    #}
+{# from the source's own tender.documents[]/planning.documents[] -- never #}
+{# a guessed or constructed URL. Most notices don't have any (the real    #}
+{# documents commonly sit behind the buyer's own e-tendering portal login #}
+{# instead -- see Submission Details in the Capture Brief below), but     #}
+{# where the source publishes them directly (Find a Tender especially),  #}
+{# this surfaces them. #}
+<div class="card">
+  <div class="card-header">
+    <h2>Bid Documents</h2>
+    {% if notice['status'] in ('APPROVED', 'CAPTURE_BRIEF_DRAFTED') %}
+    <form method="post" action="{{ url_for('queues.mark_docs_downloaded', notice_id=notice['id']) }}" style="display:inline">
+      <button type="submit" class="btn btn-secondary btn-sm">Mark documents downloaded</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if bid_documents %}
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      {% for doc in bid_documents %}
+      <a href="{{ doc.url }}" target="_blank" rel="noopener noreferrer"
+         style="display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+                background: var(--surface-alt); text-decoration: none;">
+        <span>
+          <span style="font-weight: 600; color: var(--navy); font-size: 13px;">{{ doc.label }}</span>
+          {% if doc.description %}<span style="font-size: 12px; color: var(--text-muted);"> — {{ doc.description }}</span>{% endif %}
+        </span>
+        <span style="font-size: 11px; color: var(--text-muted); white-space: nowrap;">
+          {% if doc.format %}{{ doc.format.split('/')[-1].split('.')[-1] | upper }} · {% endif %}Open ↗
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-muted); font-size: 13px;">
+      No downloadable documents were published directly on the notice. Check the buyer's e-tendering
+      portal instead — see Submission Details in the Capture Brief below, which usually links to it.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- Capture Brief (generated from data captured at sweep time) ---- #}
+{% if notice['supplier_name'] or notice['buyer_address'] or notice['procurement_method'] or notice['procurement_method_details'] or notice['cpv_primary_description'] or notice['text_blob'] %}
+<div class="card">
+  <div class="card-header">
+    <h2>Capture Brief</h2>
+    <span class="prov-label" style="margin-bottom: 0;">Generated at sweep — for review</span>
+  </div>
+  <div class="card-body">
+
+    <div class="cb-section">
+      <div class="cb-num">1</div>
+      <div>
+        <div class="cb-title">Executive Summary</div>
+        <div class="cb-body">{{ notice['title'] }}</div>
+        <div class="cb-body cb-muted">{{ notice['buyer'] or 'UNVERIFIED buyer' }} · {{ notice['source'] }} · Ref {{ notice['ref'] }}{% if notice['ocid'] %} · OCID {{ notice['ocid'] }}{% endif %}</div>
+        <div class="cb-body cb-muted">Notice Type: {{ notice['notice_type'] or '—' }}{% if notice['is_award'] %} · <span class="badge badge-pass">Award Notice</span>{% endif %}</div>
+        {% if notice['notice_url'] %}
+        <div class="cb-body"><a href="{{ notice['notice_url'] }}" target="_blank" rel="noopener noreferrer">View original notice ↗</a></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cb-section">
+      <div class="cb-num">2</div>
+      <div>
+        <div class="cb-title">Key Terms</div>
+        <div class="cb-body">Indicative Value: {{ notice['indicative_value'] or 'Not stated' }}{% if notice['value_amount_gross'] %} ({{ notice['value_amount_gross'] }} inc. VAT){% endif %}</div>
+        <div class="cb-body">Deadline: {{ notice['deadline'][:10] if notice['deadline'] else '—' }}</div>
+        <div class="cb-body">Tender Status: {{ notice['tender_status'] or '—' }}</div>
+        <div class="cb-body">Above Threshold: {{ 'Yes' if notice['above_threshold'] else ('No' if notice['above_threshold'] is not none else '—') }} · Category: {{ notice['main_procurement_category'] or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="cb-section">
+      <div class="cb-num">3</div>
+      <div>
+        <div class="cb-title">Procurement Timetable</div>
+        <div class="cb-body">Enquiry Period End: {{ notice['enquiry_period_end'][:10] if notice['enquiry_period_end'] else '—' }}</div>
+        <div class="cb-body">Tender Period End: {{ notice['tender_period_end'][:10] if notice['tender_period_end'] else '—' }}</div>
+        <div class="cb-body">Prior Market Engagement Due: {{ notice['pme_due_date'][:10] if notice['pme_due_date'] else '—' }}</div>
+        <div class="cb-body">Award Decision (est.): {{ notice['award_period_end'][:10] if notice['award_period_end'] else '—' }}</div>
+        <div class="cb-body">Future Notice Date: {{ notice['future_notice_date'][:10] if notice['future_notice_date'] else '—' }}</div>
+        <div class="cb-body">Contract Dates: {{ notice['contract_start_date'][:10] if notice['contract_start_date'] else '—' }} to {{ notice['contract_end_date'][:10] if notice['contract_end_date'] else '—' }}{% if notice['contract_max_extent_date'] %} (max extent {{ notice['contract_max_extent_date'][:10] }}){% endif %}</div>
+        {% if notice['renewal_description'] %}
+        <div class="cb-body">Extension/Renewal: {{ notice['renewal_description'] }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cb-section">
+      <div class="cb-num">4</div>
+      <div>
+        <div class="cb-title">Procurement Mechanics</div>
+        <div class="cb-body">UK Stage: {{ notice['uk_stage'] or 'UNVERIFIED' }}</div>
+        <div class="cb-body">Procedure Type: {{ notice['procurement_method'] or '—' }}</div>
+        <div class="cb-body">Procedure / Regime Details: {{ notice['procurement_method_details'] or '—' }}</div>
+        {% if notice['procedure_features'] %}
+        <div class="cb-body">Procedure Features: {{ notice['procedure_features'] }}</div>
+        {% endif %}
+        {% if lot_statuses %}
+        <div class="cb-body">Lot Statuses: {{ lot_statuses | join(', ') }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if notice['award_criteria_summary'] %}
+    <div class="cb-section">
+      <div class="cb-num">5</div>
+      <div>
+        <div class="cb-title">Award Criteria</div>
+        <div class="cb-body">{{ notice['award_criteria_summary'] }}</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="cb-section">
+      <div class="cb-num">6</div>
+      <div>
+        <div class="cb-title">Submission Details</div>
+        <div class="cb-body">{{ notice['submission_method_details'] or 'Not stated — see original notice.' }}</div>
+        <div class="cb-body cb-muted">Electronic submission: {{ notice['electronic_submission_policy'] or '—' }} · Languages: {{ notice['submission_languages'] or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="cb-section">
+      <div class="cb-num">7</div>
+      <div>
+        <div class="cb-title">Scope of Requirement</div>
+        <div class="cb-body">CPV Primary: {{ notice['cpv_primary'] or '—' }} — {{ notice['cpv_primary_description'] or '—' }}{% if notice['cpv_primary_inferred'] %} <span class="badge badge-inferred">Inferred</span>{% endif %}</div>
+        {% if cpv_additional %}
+        <div class="cb-body">Additional CPV Codes: {{ cpv_additional | join(', ') }}</div>
+        {% endif %}
+        {% if notice['text_blob'] %}
+        <div class="cb-body cb-muted">{{ notice['text_blob'][:400] }}{% if notice['text_blob']|length > 400 %}… (see Notice Text below for full extract){% endif %}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cb-section">
+      <div class="cb-num">8</div>
+      <div>
+        <div class="cb-title">Contacts &amp; Supplier</div>
+        <div class="cb-body">Incumbent Supplier: {{ notice['supplier_name'] or '—' }}{% if notice['supplier_address'] %} — {{ notice['supplier_address'] }}{% endif %}</div>
+        <div class="cb-body">Contracting Authority: {{ notice['buyer_address'] or '—' }}{% if notice['buyer_ppon'] %} · PPON {{ notice['buyer_ppon'] }}{% endif %}</div>
+        <div class="cb-body">Contact: {{ notice['buyer_contact_email'] or '—' }} · Region: {{ notice['buyer_region'] or '—' }}{% if notice['buyer_website'] %} · <a href="{{ notice['buyer_website'] }}" target="_blank" rel="noopener noreferrer">{{ notice['buyer_website'] }}</a>{% endif %}</div>
+        <div class="cb-body">Organisation Type: {{ notice['buyer_org_type'] or '—' }}</div>
+        {% if notice['conflicts_assessment'] %}
+        <div class="cb-body">Conflicts Assessment: {{ notice['conflicts_assessment'] }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cb-section">
+      <div class="cb-num">9</div>
+      <div>
+        <div class="cb-title">Capability and Fit Assessment</div>
+        {% if phase2_assessment %}
+        <div class="cb-body">Overall: {{ phase2_assessment['overall_rating'] }} — {{ phase2_assessment['overall_reasoning'] }}</div>
+        {% else %}
+        <div class="cb-body cb-muted">Not yet assessed — awaiting Phase 2 scope read or manual advance.</div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endif %}
+
+{# ---- Phase 1 Gate Results ---- #}
+{% if triage_run %}
+<div class="card">
+  <div class="card-header">
+    <h2>Phase 1 — Gate Results</h2>
+    <div>
+      {% if triage_run['headline_outcome'] == 'PASS' %}
+        <span class="badge badge-pass">✓ Overall: Pass</span>
+      {% elif triage_run['headline_outcome'] == 'FAIL' %}
+        <span class="badge badge-fail">✕ Overall: Fail</span>
+      {% elif triage_run['headline_outcome'] in ('FLAG', 'MAYBE') %}
+        <span class="badge badge-flag">⚑ Overall: {{ triage_run['headline_outcome'] }}</span>
+      {% elif triage_run['headline_outcome'] == 'INFERRED_FIT' %}
+        <span class="badge badge-inferred">~ Inferred Fit</span>
+      {% else %}
+        <span class="badge badge-unknown">{{ triage_run['headline_outcome'] }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    {% if triage_run['headline_reason'] %}
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">{{ triage_run['headline_reason'] }}</p>
+    {% endif %}
+
+    {% if gate_results %}
+    <div class="gate-grid">
+      {% for g in gate_results %}
+        <div class="gate-card {{ g['outcome'] | lower | replace('_fit', '') | replace('inferred', 'inferred') | replace('maybe', 'flag') }}">
+          <div class="gate-name">{{ g['gate_number'] }} — {{ g['gate_name'] }}</div>
+          <div class="gate-outcome" style="color: {% if g['outcome'] == 'PASS' %}#059669{% elif g['outcome'] == 'FAIL' %}#DC2626{% elif g['outcome'] in ('FLAG','MAYBE') %}#D97706{% else %}#1D4ED8{% endif %}">
+            {% if g['outcome'] == 'PASS' %}✓{% elif g['outcome'] == 'FAIL' %}✕{% elif g['outcome'] in ('FLAG','MAYBE') %}⚑{% else %}~{% endif %}
+            {{ g['outcome'] }}
+          </div>
+          {% if g['reason'] %}
+            <div class="gate-reason">{{ g['reason'] }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color: var(--text-muted); font-size: 13px;">Gate-level results not recorded for this triage run.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ---- Phase 2 Scope Read ---- #}
+{% if phase2_assessment %}
+<div class="card">
+  <div class="card-header">
+    <h2>Phase 2 — AI Scope Read</h2>
+    <span class="badge badge-provisional">PROVISIONAL — FOR VALIDATION</span>
+  </div>
+  <div class="card-body">
+    <div class="prov-label">PROVISIONAL, FOR VALIDATION — Not a bid decision. Victoria Milan, Bid Director, makes all bid and no-bid decisions.</div>
+
+    <div class="scope-grid">
+      <div class="scope-card">
+        <div class="sc-label">Capability Fit</div>
+        <div class="sc-value" style="color: {% if phase2_assessment['capability_fit_rating'] == 'HIGH' %}#059669{% elif phase2_assessment['capability_fit_rating'] == 'LOW' %}#DC2626{% else %}#D97706{% endif %}">
+          {{ phase2_assessment['capability_fit_rating'] }}
+        </div>
+        <div class="sc-reason">{{ phase2_assessment['capability_fit_reasoning'] }}</div>
+      </div>
+
+      <div class="scope-card">
+        <div class="sc-label">Competitor Position</div>
+        <div class="sc-value" style="color: {% if phase2_assessment['competitor_position_rating'] == 'STRONG' %}#059669{% elif phase2_assessment['competitor_position_rating'] == 'WEAK' %}#DC2626{% else %}#D97706{% endif %}">
+          {{ phase2_assessment['competitor_position_rating'] }}
+        </div>
+        <div class="sc-reason">{{ phase2_assessment['competitor_position_reasoning'] }}</div>
+      </div>
+
+      <div class="scope-card">
+        <div class="sc-label">Right to Win</div>
+        <div class="sc-value" style="color: {% if phase2_assessment['right_to_win_rating'] == 'HIGH' %}#059669{% elif phase2_assessment['right_to_win_rating'] == 'LOW' %}#DC2626{% else %}#D97706{% endif %}">
+          {{ phase2_assessment['right_to_win_rating'] }}
+        </div>
+        <div class="sc-reason">{{ phase2_assessment['right_to_win_reasoning'] }}</div>
+      </div>
+
+      <div class="scope-card" style="{% if phase2_assessment['overall_rating'] == 'PURSUE' %}border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.08);{% elif phase2_assessment['overall_rating'] == 'DECLINE' %}border-color: rgba(255,77,79,0.4); background: rgba(255,77,79,0.08);{% else %}border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.08);{% endif %}">
+        <div class="sc-label">Overall Recommendation</div>
+        <div class="sc-value" style="color: {% if phase2_assessment['overall_rating'] == 'PURSUE' %}#059669{% elif phase2_assessment['overall_rating'] == 'DECLINE' %}#DC2626{% else %}#D97706{% endif %}">
+          {{ phase2_assessment['overall_rating'] }}
+        </div>
+        <div class="sc-reason">{{ phase2_assessment['overall_reasoning'] }}</div>
+      </div>
+    </div>
+
+    {% if phase2_assessment['open_questions'] %}
+    <div style="margin-top: 20px;">
+      <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">Open Questions</div>
+      <ul style="list-style: disc; padding-left: 20px; font-size: 13px; color: var(--text); line-height: 1.7;">
+        {% for q in phase2_assessment['open_questions'] | from_json %}
+          <li>{{ q }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div style="font-size: 11px; color: var(--text-muted); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+      Model: {{ phase2_assessment['model_used'] }} · Generated {{ phase2_assessment['created_at'][:16] | replace('T', ' ') }} UTC
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ---- Full Notice Text ---- #}
+{% if notice['text_blob'] %}
+<div class="card">
+  <div class="card-header">
+    <h2>Notice Text</h2>
+    <span style="font-size: 12px; color: var(--text-muted);">Source: {{ notice['source'] }}</span>
+  </div>
+  <div class="card-body">
+    <pre style="white-space: pre-wrap; font-size: 12px; font-family: monospace; color: var(--text); background: var(--surface-alt); padding: 16px; border-radius: 8px; overflow-x: auto; max-height: 400px; overflow-y: auto;">{{ notice['text_blob'] }}</pre>
+  </div>
+</div>
+{% endif %}
+
+{# ---- Status History ---- #}
+{% if status_history %}
+<div class="card">
+  <div class="card-header">
+    <h2>Status History</h2>
+  </div>
+  <div class="card-body">
+    <ul class="timeline">
+      {% for h in status_history %}
+      <li>
+        <div class="ts">{{ h['changed_at'][:16] | replace('T', ' ') }} UTC</div>
+        <div class="detail">
+          <span class="actor">{{ h['changed_by'] }}</span>
+          moved from <code>{{ h['from_status'] or '—' }}</code> → <code>{{ h['to_status'] }}</code>
+          {% if h['reason'] %}<div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">{{ h['reason'] }}</div>{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function toggleAction(btn, inputId) {
+  const group = btn.closest('.action-group');
+  const input = document.getElementById(inputId);
+  btn.style.display = 'none';
+  if (input) { input.style.display = 'inline-block'; input.focus(); }
+  const submitBtns = group.querySelectorAll('.submit-btn');
+  submitBtns.forEach(s => s.style.display = 'inline-flex');
+}
+</script>
+
+{% endblock %}

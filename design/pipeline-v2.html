@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Savvy Scout — Pipeline</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #071428;
+      color: #ffffff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+    }
+
+    .app-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #0a1f2e 0%, #071428 100%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header-left h1 {
+      font-family: 'Poppins', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .header-left p {
+      font-size: 13px;
+      color: #9aa3ad;
+    }
+
+    .stats {
+      display: flex;
+      gap: 24px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #9aa3ad;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-family: 'Poppins', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    main {
+      padding: 32px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .status-column {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .status-header {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #ffffff;
+    }
+
+    .status-count {
+      background: rgba(255, 45, 88, 0.2);
+      color: #ff2d58;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .status-items {
+      padding: 12px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .pipeline-item {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+
+    .pipeline-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 45, 88, 0.3);
+    }
+
+    .item-ref {
+      font-family: 'Poppins', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: #9aa3ad;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+
+    .item-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 12px;
+    }
+
+    .meta-left {
+      color: #9aa3ad;
+      display: flex;
+      gap: 8px;
+    }
+
+    .meta-right {
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .meta-right.urgent {
+      background: rgba(255, 77, 79, 0.2);
+      color: #ff4d4f;
+    }
+
+    .meta-right.warning {
+      background: rgba(255, 180, 122, 0.2);
+      color: #ffb47a;
+    }
+
+    .meta-right.normal {
+      background: rgba(255, 255, 255, 0.1);
+      color: #9aa3ad;
+    }
+
+    .item-action {
+      padding: 6px 10px;
+      background: rgba(255, 45, 88, 0.15);
+      border: 1px solid rgba(255, 45, 88, 0.25);
+      color: #ff2d58;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+    }
+
+    .item-action:hover {
+      background: #ff2d58;
+      color: #ffffff;
+    }
+
+    .empty-state {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: #9aa3ad;
+      font-size: 13px;
+    }
+
+    /* Scrollbar */
+    main::-webkit-scrollbar,
+    .status-items::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    main::-webkit-scrollbar-track,
+    .status-items::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    main::-webkit-scrollbar-thumb,
+    .status-items::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+
+    main::-webkit-scrollbar-thumb:hover,
+    .status-items::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    @media (max-width: 1200px) {
+      .status-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      main {
+        padding: 16px;
+      }
+
+      .status-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .stats {
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header>
+      <div class="header-left">
+        <h1>📈 Pipeline</h1>
+        <p>APPROVED opportunities through to completion</p>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">Total Active</div>
+          <div class="stat-value">28</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Urgent (< 3 days)</div>
+          <div class="stat-value" style="color: #ff4d4f;">2</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">This Month Value</div>
+          <div class="stat-value">£7.2M</div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="status-grid">
+        <!-- APPROVED -->
+        <div class="status-column">
+          <div class="status-header">
+            <div class="status-title">✓ Approved</div>
+            <div class="status-count">4</div>
+          </div>
+          <div class="status-items">
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066180</div>
+              <div class="item-title">Digital Service Platform — Local Authority Service Delivery</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Example Council</span>
+                  <span>•</span>
+                  <span>Mark</span>
+                </div>
+                <div class="meta-right normal">9 days</div>
+              </div>
+              <button class="item-action">Download docs →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066175</div>
+              <div class="item-title">Cloud Infrastructure Migration Project</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Finance Org</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right normal">14 days</div>
+              </div>
+              <button class="item-action">Download docs →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066172</div>
+              <div class="item-title">Healthcare Data Analytics Platform</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>NHS Trust</span>
+                  <span>•</span>
+                  <span>Hammad</span>
+                </div>
+                <div class="meta-right normal">12 days</div>
+              </div>
+              <button class="item-action">Download docs →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066168</div>
+              <div class="item-title">Government Digital Services Transformation</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>DCMS</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right normal">17 days</div>
+              </div>
+              <button class="item-action">Download docs →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- DOCS_DOWNLOADING -->
+        <div class="status-column">
+          <div class="status-header">
+            <div class="status-title">📥 Downloading</div>
+            <div class="status-count">5</div>
+          </div>
+          <div class="status-items">
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066165</div>
+              <div class="item-title">Enterprise Digital Transformation</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Large Corp</span>
+                  <span>•</span>
+                  <span>Mark</span>
+                </div>
+                <div class="meta-right normal">11 days</div>
+              </div>
+              <button class="item-action">Download progress</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066160</div>
+              <div class="item-title">Public Services Platform Integration</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Public Body</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right warning">5 days</div>
+              </div>
+              <button class="item-action">Check download</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066155</div>
+              <div class="item-title">Healthcare System Modernization</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>NHS Regional</span>
+                  <span>•</span>
+                  <span>Hammad</span>
+                </div>
+                <div class="meta-right normal">13 days</div>
+              </div>
+              <button class="item-action">Download progress</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066150</div>
+              <div class="item-title">Financial Services Cloud</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Bank</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right normal">10 days</div>
+              </div>
+              <button class="item-action">Download progress</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066145</div>
+              <div class="item-title">Local Government IT Refresh</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Council</span>
+                  <span>•</span>
+                  <span>Mark</span>
+                </div>
+                <div class="meta-right normal">15 days</div>
+              </div>
+              <button class="item-action">Download progress</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CALENDARED -->
+        <div class="status-column">
+          <div class="status-header">
+            <div class="status-title">📅 Calendared</div>
+            <div class="status-count">12</div>
+          </div>
+          <div class="status-items">
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066140</div>
+              <div class="item-title">Strategic Tech Partnership</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Strategic Partner</span>
+                  <span>•</span>
+                  <span>Mark</span>
+                </div>
+                <div class="meta-right urgent">2 days</div>
+              </div>
+              <button class="item-action">View calendar →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066135</div>
+              <div class="item-title">Defense Sector Innovation</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Defense</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right urgent">1 day</div>
+              </div>
+              <button class="item-action">View calendar →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066130</div>
+              <div class="item-title">Healthcare Sector Initiative</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Health Board</span>
+                  <span>•</span>
+                  <span>Hammad</span>
+                </div>
+                <div class="meta-right normal">8 days</div>
+              </div>
+              <button class="item-action">View calendar →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066125</div>
+              <div class="item-title">Financial Services Modernization</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Finance Corp</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right normal">6 days</div>
+              </div>
+              <button class="item-action">Sync calendar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTIVE -->
+        <div class="status-column">
+          <div class="status-header">
+            <div class="status-title">🚀 Active</div>
+            <div class="status-count">7</div>
+          </div>
+          <div class="status-items">
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066120</div>
+              <div class="item-title">Government AI Initiative</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Government</span>
+                  <span>•</span>
+                  <span>Mark</span>
+                </div>
+                <div class="meta-right normal">19 days</div>
+              </div>
+              <button class="item-action">View details →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066115</div>
+              <div class="item-title">Large Enterprise Cloud</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Enterprise</span>
+                  <span>•</span>
+                  <span>Kanvesh</span>
+                </div>
+                <div class="meta-right normal">16 days</div>
+              </div>
+              <button class="item-action">View details →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066110</div>
+              <div class="item-title">NHS Digital Transformation</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>NHS</span>
+                  <span>•</span>
+                  <span>Hammad</span>
+                </div>
+                <div class="meta-right normal">21 days</div>
+              </div>
+              <button class="item-action">View details →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- PARKED -->
+        <div class="status-column">
+          <div class="status-header">
+            <div class="status-title">⏸ Parked</div>
+            <div class="status-count">3</div>
+          </div>
+          <div class="status-items">
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066105</div>
+              <div class="item-title">Strategic Hold Initiative</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Parked Feb</span>
+                  <span>•</span>
+                  <span>Awaiting client input</span>
+                </div>
+              </div>
+              <button class="item-action">Resume →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066100</div>
+              <div class="item-title">Budget Pending Project</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Parked Jan</span>
+                  <span>•</span>
+                  <span>Waiting for budget approval</span>
+                </div>
+              </div>
+              <button class="item-action">Resume →</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066095</div>
+              <div class="item-title">Delayed Stakeholder Buy-in</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Parked Mar</span>
+                  <span>•</span>
+                  <span>Pending stakeholder alignment</span>
+                </div>
+              </div>
+              <button class="item-action">Resume →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- REJECTED -->
+        <div class="status-column">
+          <div class="status-header">
+            <div class="status-title">✗ Rejected</div>
+            <div class="status-count">2</div>
+          </div>
+          <div class="status-items">
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066090</div>
+              <div class="item-title">Out of Scope Project</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Rejected Jul</span>
+                  <span>•</span>
+                  <span>Not core fit</span>
+                </div>
+              </div>
+              <button class="item-action">View reason</button>
+            </div>
+
+            <div class="pipeline-item">
+              <div class="item-ref">REF-066085</div>
+              <div class="item-title">Capacity Conflict Initiative</div>
+              <div class="item-meta">
+                <div class="meta-left">
+                  <span>Rejected Jul</span>
+                  <span>•</span>
+                  <span>Resource unavailable</span>
+                </div>
+              </div>
+              <button class="item-action">View reason</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

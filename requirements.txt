@@ -1,0 +1,17 @@
+requests>=2.31
+pip-system-certs>=4.0; sys_platform == 'win32'  # Windows only -- hooks the OS cert
+                       # store, which doesn't exist on Linux (Render). Fixes 403/TLS
+                       # failures against api.publiccontractsscotland.gov.uk /
+                       # api.sell2wales.gov.wales on Windows dev machines; on Linux
+                       # those two sources may need a different fix (see deploy notes).
+rapidfuzz>=3.6
+openpyxl>=3.1
+python-dotenv>=1.0
+pytest>=8.0
+flask>=3.0
+flask-login>=0.6
+anthropic>=0.40
+openai>=1.0  # Phase 2 scope reads, alternate provider -- see SCOPE_READ_PROVIDER in .env
+python-docx>=1.1
+waitress>=3.0  # production WSGI server, see wsgi.py
+APScheduler>=3.10  # in-process daily sweep, see scheduler.py

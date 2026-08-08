@@ -1,0 +1,190 @@
+{
+    "uri": "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages/066188-2026",
+    "version": "1.1",
+    "extensions": [
+        "https://standard.open-contracting.org/profiles/eu/latest/en/extension.json",
+        "https://raw.githubusercontent.com/open-contracting-extensions/ocds_amendment_rationale_classifications_extension/master/extension.json",
+        "https://raw.githubusercontent.com/open-contracting-extensions/ocds_budget_breakdown_extension/master/extension.json",
+        "https://raw.githubusercontent.com/open-contracting-extensions/ocds_contract_completion_extension/master/extension.json",
+        "https://raw.githubusercontent.com/open-contracting-extensions/ocds_documentation_extension/master/extension.json",
+        "https://raw.githubusercontent.com/open-contracting-extensions/ocds_pagination_extension/master/extension.json",
+        "https://raw.githubusercontent.com/open-contracting-extensions/ocds_suitability_extension/master/extension.json",
+        "https://raw.githubusercontent.com/portaledcahn/ocds_Links_extension/main/extension.json",
+        "https://raw.githubusercontent.com/cabinetoffice/ocds_uk_extension/main/extension.json"
+    ],
+    "publishedDate": "2026-07-14T13:35:19+01:00",
+    "publisher": {
+        "name": "Cabinet Office",
+        "scheme": "GB-GOR",
+        "uid": "D2",
+        "uri": "https://www.gov.uk/government/organisations/cabinet-office"
+    },
+    "license": "http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
+    "publicationPolicy": "https://www.gov.uk/government/publications/open-contracting",
+    "releases": [
+        {
+            "ocid": "ocds-h6vhtk-06cac6",
+            "id": "066188-2026",
+            "tag": [
+                "planning"
+            ],
+            "date": "2026-07-14T13:35:19+01:00",
+            "initiationType": "tender",
+            "parties": [
+                {
+                    "name": "Transport for London",
+                    "id": "GB-PPON-PHMT-6197-NWNZ",
+                    "identifier": {
+                        "scheme": "GB-PPON",
+                        "id": "PHMT-6197-NWNZ"
+                    },
+                    "address": {
+                        "streetAddress": "5 Endeavour Square",
+                        "locality": "London",
+                        "postalCode": "E20 1JN",
+                        "country": "GB",
+                        "countryName": "United Kingdom",
+                        "region": "UKI41"
+                    },
+                    "contactPoint": {
+                        "email": "BSFAribaAdministration@tfl.gov.uk"
+                    },
+                    "roles": [
+                        "buyer"
+                    ],
+                    "details": {
+                        "classifications": [
+                            {
+                                "scheme": "UK_CA_TYPE",
+                                "id": "publicUndertaking",
+                                "description": "Public undertaking"
+                            }
+                        ]
+                    }
+                }
+            ],
+            "buyer": {
+                "id": "GB-PPON-PHMT-6197-NWNZ",
+                "name": "Transport for London"
+            },
+            "planning": {
+                "milestones": [
+                    {
+                        "id": "engagement",
+                        "type": "engagement",
+                        "description": "We are seeking market input to determine our procurement route and strategy.\nPlease contact LEGACYINFRASTRUCTURESUPPORT@tfl.gov.uk to register your interest and receive more information.",
+                        "dueDate": "2026-08-07T23:59:59+01:00",
+                        "status": "scheduled"
+                    }
+                ],
+                "documents": [
+                    {
+                        "id": "066188-2026",
+                        "documentType": "marketEngagementNotice",
+                        "noticeType": "UK2",
+                        "description": "Preliminary market engagement notice on Find a Tender",
+                        "url": "https://www.find-tender.service.gov.uk/Notice/066188-2026",
+                        "datePublished": "2026-07-14T13:35:19+01:00",
+                        "format": "text/html"
+                    }
+                ]
+            },
+            "tender": {
+                "id": "ocds-h6vhtk-06cac6",
+                "legalBasis": {
+                    "id": "2023/54",
+                    "scheme": "UKPGA",
+                    "uri": "https://www.legislation.gov.uk/ukpga/2023/54/contents"
+                },
+                "title": "Legacy Infrastructure Support",
+                "description": "Transport for London (TfL) is seeking a specialist support partner to provide 24x7x365 break-fix support and technical expertise for a portfolio of legacy infrastructure technologies that are no longer fully supported by their original vendors. The current estate includes legacy versions of Microsoft Windows Server, SQL Server, Oracle, Solaris and Red Hat platforms. The requirement covers operational support, incident management, service desk provision, escalation management, reporting, cybersecurity compliance, risk management and support for the eventual migration of services to modern supported platforms.  \nTfL requires a service that can scale as the legacy estate changes over time. Suppliers must demonstrate robust operational processes, the ability to mitigate risks associated with unsupported technologies, and commercial flexibility through both managed service and consumption-based support models. TfL is seeking to understand market capability, delivery approaches, commercial structures, and innovation in supporting critical legacy infrastructure within a highly regulated operational environment.",
+                "items": [
+                    {
+                        "id": "1",
+                        "additionalClassifications": [
+                            {
+                                "scheme": "CPV",
+                                "id": "48800000",
+                                "description": "Information systems and servers"
+                            },
+                            {
+                                "scheme": "CPV",
+                                "id": "50300000",
+                                "description": "Repair, maintenance and associated services related to personal computers, office equipment, telecommunications and audio-visual equipment"
+                            },
+                            {
+                                "scheme": "CPV",
+                                "id": "72100000",
+                                "description": "Hardware consultancy services"
+                            }
+                        ],
+                        "deliveryAddresses": [
+                            {
+                                "region": "UKC",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKD",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKE",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKF",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKG",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKH",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKI",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKJ",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            },
+                            {
+                                "region": "UKK",
+                                "country": "GB",
+                                "countryName": "United Kingdom"
+                            }
+                        ],
+                        "relatedLot": "1"
+                    }
+                ],
+                "mainProcurementCategory": "services",
+                "lots": [
+                    {
+                        "id": "1",
+                        "contractPeriod": {
+                            "startDate": "2027-07-13T00:00:00+01:00",
+                            "endDate": "2031-07-12T23:59:59+01:00"
+                        },
+                        "status": "planning"
+                    }
+                ],
+                "communication": {
+                    "futureNoticeDate": "2026-09-08T23:59:59+01:00"
+                },
+                "status": "planning"
+            },
+            "language": "en"
+        }
+    ]
+}

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Opportunities — Savvy Scout{% endblock %}
+{% block page_title %}All Opportunities{% endblock %}
+
+{% block content %}
+<style>
+  .summary-bar {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;
+  }
+  .summary-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--surface); font-size: 12px; font-weight: 600; cursor: pointer;
+    text-decoration: none; color: var(--text); transition: all 0.15s;
+  }
+  .summary-pill:hover, .summary-pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+  .summary-pill .pill-count { font-size: 11px; font-weight: 700; }
+
+  .filter-bar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: var(--surface); padding: 12px 16px; border-radius: 8px;
+    border: 1px solid var(--border); margin-bottom: 20px;
+  }
+  .filter-bar label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+  .filter-bar select, .filter-bar input {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; font-family: var(--font); background: var(--surface-alt); color: var(--text);
+  }
+  .filter-bar select:focus, .filter-bar input:focus {
+    outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(220,38,38,0.1);
+  }
+
+  .opp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .opp-table thead th {
+    padding: 10px 14px; background: var(--surface-alt); border-bottom: 2px solid var(--border);
+    text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-muted); white-space: nowrap; position: sticky; top: 0; z-index: 10;
+  }
+  .opp-table tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  .opp-table tbody tr:hover { background: var(--surface-alt); }
+  .opp-table td { padding: 10px 14px; vertical-align: middle; }
+
+  .status-badge {
+    display: inline-block; padding: 3px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+    white-space: nowrap;
+  }
+  .status-NEW { background: #EFF6FF; color: #1D4ED8; }
+  .status-PHASE1_TRIAGED { background: #F0FDF4; color: #166534; }
+  .status-TO_REVIEW { background: #DBEAFE; color: #1D4ED8; }
+  .status-HANDOFF { background: #E0E7FF; color: #3730A3; }
+  .status-PHASE2_SCOPED, .status-AWAITING_PHASE2_APPROVAL { background: #EDE9FE; color: #5B21B6; }
+  .status-ESCALATED_TO_VICTORIA { background: #FEF3C7; color: #92400E; }
+  .status-APPROVED, .status-ACTIVE { background: #D1FAE5; color: #065F46; }
+  .status-REJECTED { background: #FEE2E2; color: #991B1B; }
+  .status-PARKED { background: #F3F4F6; color: #374151; }
+  .status-MONITORING { background: #FEF9C3; color: #713F12; }
+  .status-CAPTURE_BRIEF_DRAFTED { background: #DCFCE7; color: #166534; }
+  .status-DOCS_DOWNLOADED, .status-CALENDARED { background: #D1FAE5; color: #065F46; }
+
+  .opp-title a { color: var(--navy); text-decoration: none; font-weight: 600; }
+  .opp-title a:hover { color: var(--primary); text-decoration: underline; }
+  .opp-title .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-weight: 400; }
+  .ref-cell { font-family: monospace; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .ref-cell a { color: var(--text-muted); text-decoration: none; }
+  .ref-cell a:hover { color: var(--primary); }
+
+  .search-input { flex: 1; min-width: 200px; }
+</style>
+
+{# Summary status pills #}
+<div class="summary-bar">
+  <a href="{{ url_for('queues.opportunities') }}" class="summary-pill {% if not status_filter and not stage_filter %}active{% endif %}">
+    All <span class="pill-count">({{ notices | length }})</span>
+  </a>
+  {% set phase1_c = status_counts.get('TO_REVIEW', 0) %}
+  {% set handoff_c = status_counts.get('HANDOFF', 0) %}
+  {% set phase2_c = status_counts.get('AWAITING_PHASE2_APPROVAL', 0) %}
+  {% set victoria_c = status_counts.get('ESCALATED_TO_VICTORIA', 0) %}
+  {% set approved_c = status_counts.get('APPROVED', 0) + status_counts.get('CAPTURE_BRIEF_DRAFTED', 0) + status_counts.get('ACTIVE', 0) %}
+  {% set rejected_c = status_counts.get('REJECTED', 0) %}
+  {% set parked_c = status_counts.get('PARKED', 0) %}
+  {% set monitor_c = status_counts.get('MONITORING', 0) %}
+
+  {% if phase1_c %}<a href="{{ url_for('queues.opportunities', status='TO_REVIEW') }}" class="summary-pill {% if status_filter == 'TO_REVIEW' %}active{% endif %}" style="border-color: #3B82F6; color: #1D4ED8;">To Review <span class="pill-count">({{ phase1_c }})</span></a>{% endif %}
+  {% if handoff_c %}<a href="{{ url_for('queues.opportunities', status='HANDOFF') }}" class="summary-pill {% if status_filter == 'HANDOFF' %}active{% endif %}" style="border-color: #4F46E5; color: #3730A3;">Handoff <span class="pill-count">({{ handoff_c }})</span></a>{% endif %}
+  {% if phase2_c %}<a href="{{ url_for('queues.opportunities', status='AWAITING_PHASE2_APPROVAL') }}" class="summary-pill {% if status_filter == 'AWAITING_PHASE2_APPROVAL' %}active{% endif %}" style="border-color: #8B5CF6; color: #5B21B6;">Phase 2 Queue <span class="pill-count">({{ phase2_c }})</span></a>{% endif %}
+  {% if victoria_c %}<a href="{{ url_for('queues.opportunities', status='ESCALATED_TO_VICTORIA') }}" class="summary-pill {% if status_filter == 'ESCALATED_TO_VICTORIA' %}active{% endif %}" style="border-color: #F59E0B; color: #92400E;">Escalated <span class="pill-count">({{ victoria_c }})</span></a>{% endif %}
+  {% if approved_c %}<a href="{{ url_for('queues.opportunities', status='APPROVED') }}" class="summary-pill {% if status_filter == 'APPROVED' %}active{% endif %}" style="border-color: #10B981; color: #065F46;">Approved <span class="pill-count">({{ approved_c }})</span></a>{% endif %}
+  {% if rejected_c %}<a href="{{ url_for('queues.opportunities', status='REJECTED') }}" class="summary-pill {% if status_filter == 'REJECTED' %}active{% endif %}" style="border-color: #EF4444; color: #991B1B;">Rejected <span class="pill-count">({{ rejected_c }})</span></a>{% endif %}
+  {% if parked_c %}<a href="{{ url_for('queues.opportunities', status='PARKED') }}" class="summary-pill {% if status_filter == 'PARKED' %}active{% endif %}">Parked <span class="pill-count">({{ parked_c }})</span></a>{% endif %}
+  {% if monitor_c %}<a href="{{ url_for('queues.opportunities', status='MONITORING') }}" class="summary-pill {% if status_filter == 'MONITORING' %}active{% endif %}">Monitoring <span class="pill-count">({{ monitor_c }})</span></a>{% endif %}
+</div>
+
+{# Filters #}
+<form method="get" action="{{ url_for('queues.opportunities') }}" class="filter-bar">
+  <label>Search:</label>
+  <input type="text" name="q" id="search-input" class="search-input" placeholder="Filter by title, buyer, ref…" value="{{ request.args.get('q', '') }}" autocomplete="off">
+  <label>Sector:</label>
+  <select name="sector">
+    <option value="">All Sectors</option>
+    {% for s in sectors %}
+    <option value="{{ s }}" {% if sector_filter == s %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <input type="hidden" name="status" value="{{ status_filter }}">
+  <input type="hidden" name="stage" value="{{ stage_filter }}">
+  <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+  {% if status_filter or stage_filter or sector_filter or request.args.get('q') %}
+  <a href="{{ url_for('queues.opportunities') }}" class="btn btn-secondary btn-sm">✕ Clear</a>
+  {% endif %}
+</form>
+
+{# Main table #}
+<div class="card" style="overflow-x: auto;">
+  <table class="opp-table">
+    <thead>
+      <tr>
+        <th>Ref</th>
+        <th>Opportunity</th>
+        <th>Buyer</th>
+        <th>Value</th>
+        <th>Stage</th>
+        <th>Deadline</th>
+        <th>Status</th>
+        <th>Gate</th>
+        <th>Sector / Owner</th>
+      </tr>
+    </thead>
+    <tbody id="opp-tbody">
+    {% if notices %}
+      {% for n in notices %}
+      <tr data-search="{{ (n['title'] or '') | lower }} {{ (n['buyer'] or '') | lower }} {{ (n['ref'] or '') | lower }}">
+        <td class="ref-cell">
+          <a href="{{ url_for('queues.notice_detail', notice_id=n['id']) }}" title="View detail">{{ n['ref'] | truncate(20, True, '…') }}</a>
+        </td>
+        <td class="opp-title">
+          <a href="{{ url_for('queues.notice_detail', notice_id=n['id']) }}">{{ n['title'] | truncate(70, True, '…') }}</a>
+          <div class="sub">{{ n['source'] }} · {{ n['first_seen_at'][:10] if n['first_seen_at'] else '' }}</div>
+        </td>
+        <td style="font-size: 12px; max-width: 160px; color: var(--text-muted);">{{ n['buyer'] | truncate(35, True, '…') if n['buyer'] else 'UNVERIFIED' }}</td>
+        <td style="font-size: 12px; white-space: nowrap; color: var(--text-muted);">{{ n['indicative_value'] or '—' }}</td>
+        <td>
+          {% if n['uk_stage'] and n['uk_stage'] != 'UNVERIFIED' %}
+            <span class="badge badge-stage">{{ n['uk_stage'] }}</span>
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size: 12px; white-space: nowrap; color: var(--text-muted);">{{ n['deadline'][:10] if n['deadline'] else '—' }}</td>
+        <td>
+          <span class="status-badge status-{{ n['status'] }}">{{ n['status'] | replace('_', ' ') | replace('AWAITING ', '') }}</span>
+        </td>
+        <td>
+          {% set o = n['headline_outcome'] %}
+          {% if o == 'PASS' %}<span class="badge badge-pass">✓</span>
+          {% elif o == 'FAIL' %}<span class="badge badge-fail">✕</span>
+          {% elif o == 'FLAG' or o == 'MAYBE' %}<span class="badge badge-flag">⚑</span>
+          {% elif o == 'INFERRED_FIT' %}<span class="badge badge-inferred">~</span>
+          {% elif o == 'MONITOR' %}<span class="badge badge-unknown">◎</span>
+          {% else %}—{% endif %}
+        </td>
+        <td style="font-size: 12px;">
+          {% if n['sector'] %}<span class="meta-chip" style="font-size:11px; padding:2px 6px; border-radius:4px; background:var(--surface-alt); color:var(--text);">{{ n['sector'] }}</span>{% endif %}
+          {% if n['owner'] %}<span style="color: var(--text-muted); margin-left: 4px;">{{ n['owner'] }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    {% else %}
+    <tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">No opportunities found.</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{# Client-side search #}
+<script>
+const searchInput = document.getElementById('search-input');
+if (searchInput) {
+  searchInput.addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#opp-tbody tr').forEach(row => {
+      const text = row.getAttribute('data-search') || '';
+      row.style.display = text.includes(q) ? '' : 'none';
+    });
+  });
+}
+</script>
+
+{% endblock %}

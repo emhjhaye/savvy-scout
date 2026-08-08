@@ -1,0 +1,50 @@
+/* Savvy Scout design tokens (CSS variables)
+   Import this file into prototypes or your global stylesheet.
+*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Poppins:wght@600;700&display=swap');
+
+:root{
+  /* Colors */
+  --brand-primary: #071428;    /* deep navy */
+  --brand-primary-2: #041226;  /* darker */
+  --brand-accent: #FF2D58;     /* vivid pink */
+  --brand-secondary: #00BFA6;  /* teal */
+  --neutral-900: #22252A;      /* charcoal */
+  --neutral-700: #4B5561;      /* mid */
+  --neutral-500: #9AA3AD;      /* muted */
+  --neutral-100: #F4F6F8;      /* light background */
+  --white: #FFFFFF;
+
+  /* Semantic */
+  --bg: var(--brand-primary-2);
+  --panel-bg: rgba(255,255,255,0.02);
+  --muted: var(--neutral-500);
+  --danger: #FF4D4F;
+
+  /* Typography */
+  --font-heading: 'Poppins', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-soft: 0 6px 18px rgba(2,6,23,0.45);
+  --shadow-accent: 0 6px 18px rgba(255,45,88,0.14);
+
+  /* Layout */
+  --container-width: 1180px;
+}
+
+/* Utility: visually-hidden */
+.sr-only{position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px}

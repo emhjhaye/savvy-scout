@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Overview — Savvy Scout{% endblock %}
+{% block page_title %}Overview{% endblock %}
+{% block page_subtitle %}<div class="topbar-subtitle">Scouting report</div>{% endblock %}
+
+{% block content %}
+
+<style>
+  body { overflow-y: auto; }
+  .content { padding: 10px 18px; overflow: visible; }
+  .page-wrapper { overflow: visible; }
+
+  .report-card { margin-top: 0; margin-bottom: 0; }
+  .report-card .card-body { padding: 10px 12px; }
+
+  /* One KPI strip for point-in-time totals -- these numbers appear here ONLY.
+     Grid with minmax(0,1fr) columns always stays a single row: columns shrink to
+     fit the available width exactly, they never wrap and never force page overflow. */
+  .kpi-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+  .kpi-card { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; background: var(--surface); }
+  .kpi-card .stat-value { font-size: 18px; font-weight: 900; color: var(--navy); line-height: 1.1; }
+  .kpi-card .stat-label { margin-top: 2px; font-size: 10.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kpi-card .hint { margin-top: 1px; font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Row of 2 panels, table (wider) + donut (narrower). */
+  .panel-grid-wide { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 10px; margin-bottom: 6px; align-items: stretch; }
+  .panel-grid-wide > .panel { min-width: 0; }
+
+  /* Row of 2 equal panels. */
+  .panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 0; }
+  .panel-grid > .panel { min-width: 0; }
+
+  .panel { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,0.04); padding: 9px 12px; }
+  .panel-head { margin-bottom: 5px; }
+  .panel-title { font-size: 12.5px; font-weight: 800; color: var(--navy); }
+  .panel-subtitle { margin-top: 1px; font-size: 10.5px; color: var(--text-muted); }
+
+  /* Sector performance table: rows = sector (+ TOTAL), columns = time windows.
+     Only in-scope notices count here (real sector, UK1-4, CPV within that
+     sector's config_sector_cpv_scope) -- see home.py's _in_scope_filter_sql. */
+  .perf-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .perf-table th { text-align: right; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); padding: 3px 5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .perf-table th:first-child, .perf-table td:first-child { text-align: left; }
+  .perf-table td { padding: 3px 5px; text-align: right; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border); }
+  .perf-table tbody tr:last-child td { border-bottom: none; }
+  .perf-table .sector-cell { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+  .perf-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .perf-table tr.total-row td { font-weight: 800; border-top: 2px solid var(--border); background: var(--surface-alt); }
+
+  /* Donut + legend language, reused for Sector mix and Triage outcomes. */
+  .donut-wrap { display: flex; align-items: center; gap: 12px; }
+  .donut { position: relative; width: 82px; height: 82px; border-radius: 50%; flex-shrink: 0; }
+  .donut-hole { position: absolute; inset: 20%; background: var(--surface); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .donut-center-value { font-size: 14px; font-weight: 800; color: var(--navy); line-height: 1; }
+  .donut-center-label { font-size: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+  .legend-list { flex: 1; min-width: 0; display: grid; gap: 3px; }
+  .legend-item { min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 600; color: var(--navy); }
+  .legend-value { font-size: 10.5px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* One meter-bar language, used for Sweep activity. */
+  .meter-list { display: grid; gap: 4px; }
+  .meter-row { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 8px; align-items: center; }
+  .meter-label { font-size: 11px; font-weight: 600; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 2px; }
+  .meter-track { height: 7px; border-radius: 999px; background: var(--surface-alt); border: 1px solid var(--border); overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: inherit; }
+  .meter-value { font-size: 11px; font-weight: 700; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+
+  .panel-note { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+  .panel-note strong { color: var(--navy); }
+</style>
+
+<div class="card report-card">
+  <div class="card-body">
+    {% set ytd_item = scouting_report.tiles[0] %}
+    {% set month_item = scouting_report.tiles[1] %}
+    {% set week_item = scouting_report.tiles[2] %}
+    {% set today_item = scouting_report.tiles[3] %}
+    {% set daily = scouting_report.get('daily', {}) %}
+    {% set triage_outcomes = scouting_report.get('triage_outcomes', []) %}
+    {% set triage_total = triage_outcomes | sum(attribute='value') %}
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="stat-value">{{ scouting_report.total }}</div>
+        <div class="stat-label">Total scouted</div>
+        <div class="hint">All notices in the database</div>
+      </div>
+      <div class="kpi-card">
+        <div class="stat-value">{{ ytd_item.value }}</div>
+        <div class="stat-label">Scouted YTD</div>
+        <div class="hint">{{ ytd_item.hint }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="stat-value">{{ month_item.value }}</div>
+        <div class="stat-label">This Month</div>
+        <div class="hint">{{ month_item.hint }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="stat-value">{{ week_item.value }}</div>
+        <div class="stat-label">This Week</div>
+        <div class="hint">{{ week_item.hint }}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="stat-value">{{ today_item.value }}</div>
+        <div class="stat-label">Today</div>
+        <div class="hint">{{ today_item.hint }}</div>
+      </div>
+    </div>
+
+    <div class="panel-grid-wide">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Sector performance</div>
+          <div class="panel-subtitle">Notices scouted per sector, by time window</div>
+        </div>
+        <table class="perf-table">
+          <thead>
+            <tr>
+              <th>Sector</th>
+              <th>Today</th>
+              <th>This week</th>
+              <th>This month</th>
+              <th>YTD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in scouting_report.sector_time_rows %}
+            <tr class="{% if row.sector == 'TOTAL' %}total-row{% endif %}">
+              <td>
+                <span class="sector-cell">
+                  {% if row.sector != 'TOTAL' %}<span class="perf-swatch" style="background: {{ sector_palette[loop.index0 % sector_palette|length] }};"></span>{% endif %}
+                  {{ row.sector }}
+                </span>
+              </td>
+              <td>{{ row.today }}</td>
+              <td>{{ row.week }}</td>
+              <td>{{ row.month }}</td>
+              <td>{{ row.ytd }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Sector mix</div>
+          <div class="panel-subtitle">Share of all notices scouted</div>
+        </div>
+        <div class="donut-wrap">
+          <div class="donut" style="background: {{ scouting_report.sector_pie_gradient }};">
+            <div class="donut-hole">
+              <div class="donut-center-value">{{ scouting_report.total }}</div>
+              <div class="donut-center-label">Total</div>
+            </div>
+          </div>
+          <div class="legend-list">
+            {% for row in scouting_report.sector_split[:6] %}
+            <div class="legend-item">
+              <span class="legend-swatch" style="background: {{ sector_palette[loop.index0 % sector_palette|length] }};"></span>
+              <span class="legend-label">{{ row.sector }}</span>
+              <span class="legend-value">{{ row.share }}%</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Triage outcomes</div>
+          <div class="panel-subtitle">Latest gate result for every notice</div>
+        </div>
+        <div class="donut-wrap">
+          <div class="donut" style="background: {{ scouting_report.triage_pie_gradient }};">
+            <div class="donut-hole">
+              <div class="donut-center-value">{{ triage_total }}</div>
+              <div class="donut-center-label">Total</div>
+            </div>
+          </div>
+          <div class="legend-list">
+            {% for item in triage_outcomes %}
+            <div class="legend-item">
+              <span class="legend-swatch" style="background: {{ triage_colors.get(item.label, '#64748B') }};"></span>
+              <span class="legend-label">{{ item.label }}</span>
+              <span class="legend-value">{{ item.value }}</span>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="panel-note">
+          <strong>{{ triage_outcomes[1].value if triage_outcomes|length > 1 else 0 }}</strong> flagged notices need review before moving on.
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Sweep activity</div>
+          <div class="panel-subtitle">Seen &amp; swept, today vs yesterday</div>
+        </div>
+        {% set daily_rows = [
+          ('Seen today', daily.get('today_seen', 0), '#2563EB'),
+          ('Seen yesterday', daily.get('yesterday_seen', 0), '#93C5FD'),
+          ('Swept today', daily.get('today_swept', 0), '#10B981'),
+          ('Swept yesterday', daily.get('yesterday_swept', 0), '#6EE7B7'),
+        ] %}
+        {% set daily_max = [daily_rows[0][1], daily_rows[1][1], daily_rows[2][1], daily_rows[3][1], 1] | max %}
+        <div class="meter-list">
+          {% for label, value, color in daily_rows %}
+          <div class="meter-row">
+            <div>
+              <div class="meter-label">{{ label }}</div>
+              <div class="meter-track">
+                <div class="meter-fill" style="width: {{ (value / daily_max * 100) if daily_max else 0 }}%; background: {{ color }};"></div>
+              </div>
+            </div>
+            <div class="meter-value">{{ value }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+

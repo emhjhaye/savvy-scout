@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Notice Details (Phase 1)</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    .app { display: flex; min-height: 100vh; }
+    .logo { font-family: var(--font-heading); font-weight: 700; color: var(--brand-accent); margin-bottom: 18px; }
+    .main { flex: 1; padding: 32px; }
+    
+    .header-section {
+      background: rgba(7, 20, 40, 0.5);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      border-left: 4px solid var(--brand-accent);
+    }
+    .ref { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .notice-title { font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+    .meta-row { display: flex; gap: 32px; margin-top: 16px; flex-wrap: wrap; }
+    .meta-item { font-size: 14px; }
+    .meta-label { color: var(--muted); }
+    .meta-value { font-weight: 600; margin-top: 4px; }
+    
+    .content-wrapper { display: grid; grid-template-columns: 1fr 380px; gap: 32px; }
+    
+    /* Tabs */
+    .tabs { display: flex; gap: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 24px; }
+    .tab { 
+      padding: 12px 0; 
+      border-bottom: 2px solid transparent; 
+      cursor: pointer;
+      color: var(--muted);
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .tab.active { 
+      color: var(--white);
+      border-bottom-color: var(--brand-accent);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    /* Gate Results */
+    .gate { 
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .gate-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .gate-name { font-weight: 600; }
+    .gate-outcome { padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .gate-outcome.pass { background: rgba(0,191,166,0.2); color: #00BFA6; }
+    .gate-outcome.fail { background: rgba(255,77,79,0.2); color: #FF4D4F; }
+    .gate-outcome.flag { background: rgba(255,180,122,0.2); color: #FFB47A; }
+    .gate-outcome.maybe { background: rgba(255,212,0,0.2); color: #FFD400; }
+    
+    .gate-reason { font-size: 14px; color: var(--muted); line-height: 1.5; }
+    
+    /* Opportunity Details */
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .detail-item { }
+    .detail-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+    .detail-value { font-size: 15px; word-break: break-word; }
+    
+    /* Right sidebar */
+    .action-panel { 
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      position: sticky;
+      top: 32px;
+    }
+    .action-panel h3 { margin-top: 0; margin-bottom: 16px; }
+    .action-btn { 
+      width: 100%; 
+      padding: 12px 16px; 
+      border-radius: 8px; 
+      border: none; 
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .action-btn.primary { background: var(--brand-accent); color: #fff; }
+    .action-btn.primary:hover { opacity: 0.9; }
+    .action-btn.danger { background: #FF4D4F; color: #fff; }
+    .action-btn.warning { background: #FFB47A; color: #fff; }
+    
+    .reason-note { font-size: 12px; color: var(--muted); margin-top: 12px; }
+    
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-dark); border-radius: 12px; padding: 32px; max-width: 500px; width: 90%; }
+    .modal-header { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+    .modal-close { float: right; cursor: pointer; font-size: 20px; color: var(--muted); }
+    textarea { width: 100%; padding: 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; background: rgba(255,255,255,0.02); color: var(--white); font-family: inherit; resize: vertical; min-height: 120px; }
+    
+    .crumbs { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .crumbs a { color: var(--brand-accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="logo">Savvy Scout</div>
+      <ul class="nav">
+        <li><a href="dashboard-home.html">Dashboard</a></li>
+        <li class="active"><a href="#">My Queue</a></li>
+        <li><a href="#">Escalations</a></li>
+        <li><a href="#">Admin</a></li>
+      </ul>
+      <div style="margin-top:20px;color:var(--muted);font-size:13px">Logged in as Mark</div>
+    </aside>
+
+    <main class="main">
+      <div class="crumbs">
+        <a href="dashboard-home.html">Dashboard</a> / My Queue / <strong>Phase 1 Review</strong>
+      </div>
+
+      <div class="header-section">
+        <div class="ref">REF-066188</div>
+        <div class="notice-title">Cloud Migration: Modernising Council Digital Services Across 15 Sites</div>
+        <div class="meta-row">
+          <div class="meta-item">
+            <div class="meta-label">BUYER</div>
+            <div class="meta-value">City of London Corporation</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">INDICATIVE VALUE</div>
+            <div class="meta-value">£1.2M–£1.8M</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">SOURCE</div>
+            <div class="meta-value">Find a Tender (FTS)</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">DEADLINE</div>
+            <div class="meta-value">2026-08-15 17:00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content-wrapper">
+        <section>
+          <div class="tabs">
+            <div class="tab active" onclick="showTab(event, 'details')">Opportunity Details</div>
+            <div class="tab" onclick="showTab(event, 'gates')">Gate Results</div>
+            <div class="tab" onclick="showTab(event, 'json')">Full JSON</div>
+          </div>
+
+          <!-- Details Tab -->
+          <div id="details" class="tab-content active">
+            <div class="detail-grid">
+              <div class="detail-item">
+                <div class="detail-label">CPV CODES</div>
+                <div class="detail-value">72200000 (IT services), 72210000 (Consultancy)</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">UK STAGE (Procurement Act)</div>
+                <div class="detail-value">UK3 (Tender published)</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">WINDOW STATUS</div>
+                <div class="detail-value">Open — closes 2026-08-15</div>
+              </div>
+              <div class="detail-item">
+                <div class="detail-label">FRAMEWORK</div>
+                <div class="detail-value">Direct open procurement</div>
+              </div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.02); border-radius: 8px; padding: 16px; margin-top: 24px;">
+              <h3 style="margin-top: 0; margin-bottom: 12px;">Opportunity Summary</h3>
+              <p style="color: var(--muted); line-height: 1.6;">
+                The City of London Corporation seeks a digital transformation partner to migrate critical services from legacy on-premises infrastructure to a hybrid cloud platform. Scope includes architecture design, implementation, data migration, training and 12 months managed support. Estimated value £1.2M–£1.8M. Open competition, no pre-qualification rounds noted.
+              </p>
+            </div>
+          </div>
+
+          <!-- Gates Tab -->
+          <div id="gates" class="tab-content">
+            <div style="margin-bottom: 24px; padding: 12px; background: rgba(0,191,166,0.1); border-radius: 8px; border-left: 3px solid #00BFA6;">
+              <strong style="color: #00BFA6;">Overall: PASS</strong> — All gates passed. Ready for Phase 2 scope read.
+            </div>
+
+            <div class="gate">
+              <div class="gate-header">
+                <div class="gate-name">Gate 1: Sector & Owner</div>
+                <div class="gate-outcome pass">PASS</div>
+              </div>
+              <div class="gate-reason">Local Government + IT Services → Mark (your sector)</div>
+            </div>
+
+            <div class="gate">
+              <div class="gate-header">
+                <div class="gate-name">Gate 2: Type of Work</div>
+                <div class="gate-outcome pass">PASS</div>
+              </div>
+              <div class="gate-reason">Bespoke cloud integration, platform design, managed services → Trifork fit</div>
+            </div>
+
+            <div class="gate">
+              <div class="gate-header">
+                <div class="gate-name">Gate 3: Framework Status</div>
+                <div class="gate-outcome pass">PASS</div>
+              </div>
+              <div class="gate-reason">Direct open procurement. No pre-existing framework requirement.</div>
+            </div>
+
+            <div class="gate">
+              <div class="gate-header">
+                <div class="gate-name">Gate 4: Window Status</div>
+                <div class="gate-outcome pass">PASS</div>
+              </div>
+              <div class="gate-reason">Tender open. Deadline 2026-08-15. 27 days remaining.</div>
+            </div>
+
+            <div class="gate">
+              <div class="gate-header">
+                <div class="gate-name">Gate 5: CPV Codes</div>
+                <div class="gate-outcome pass">PASS</div>
+              </div>
+              <div class="gate-reason">72200000 and 72210000 are on the pass list.</div>
+            </div>
+
+            <div class="gate">
+              <div class="gate-header">
+                <div class="gate-name">Filter 3: Scale & Incumbents</div>
+                <div class="gate-outcome pass">PASS</div>
+              </div>
+              <div class="gate-reason">Value £1.2M–£1.8M (below £500M threshold). Competitive market expected.</div>
+            </div>
+          </div>
+
+          <!-- JSON Tab -->
+          <div id="json" class="tab-content">
+            <div style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; font-size: 12px; overflow-x: auto; font-family: monospace; max-height: 400px; overflow-y: auto;">
+              <pre>{
+  "id": "066188",
+  "title": "Cloud Migration: Modernising Council Digital Services Across 15 Sites",
+  "buyer": "City of London Corporation",
+  "source": "fts",
+  "indicative_value": "1200000-1800000",
+  "cpv_codes": ["72200000", "72210000"],
+  "uk_stage": "UK3",
+  "deadline": "2026-08-15T17:00:00Z",
+  "reference": "REF-066188",
+  "raw_json": {...}
+}</pre>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Sidebar: Actions -->
+        <aside class="action-panel">
+          <h3>Your Decision</h3>
+          <button class="action-btn primary" onclick="openModal('approve')">✓ APPROVE for Phase 2</button>
+          <button class="action-btn danger" onclick="openModal('reject')">✗ REJECT</button>
+          <button class="action-btn warning" onclick="openModal('escalate')">⚠ Mark for Victoria</button>
+          <div class="reason-note">
+            You will be asked to provide a reason for any decision.
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal: Approve -->
+  <div id="approveModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal('approve')">&times;</span>
+      <div class="modal-header">Approve for Phase 2?</div>
+      <p style="color: var(--muted);">This opportunity will move to Phase 2 scope read. An AI-generated assessment will be prepared for your review.</p>
+      <p style="color: var(--muted);">Optional note for your records:</p>
+      <textarea id="approveReason" placeholder="e.g., Good fit for cloud services practice, multiple reference sites..."></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button class="action-btn primary" style="flex: 1;" onclick="submitApproval()">Confirm Approval</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeModal('approve')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Reject -->
+  <div id="rejectModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal('reject')">&times;</span>
+      <div class="modal-header">Reject This Opportunity?</div>
+      <p style="color: var(--muted);">This is permanent. Include your reasoning so it can be reviewed in the audit log.</p>
+      <p style="color: var(--muted);"><strong>Reason for rejection (required):</strong></p>
+      <textarea id="rejectReason" placeholder="e.g., Out of scope, competing priority, resource constraints..." style="border-color: rgba(255,77,79,0.3);"></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button class="action-btn danger" style="flex: 1;" onclick="submitRejection()">Confirm Rejection</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeModal('reject')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Escalate -->
+  <div id="escalateModal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal('escalate')">&times;</span>
+      <div class="modal-header">Mark for Victoria?</div>
+      <p style="color: var(--muted);">This opportunity will be escalated to Victoria Milan for a bid/no-bid decision. An auto-generated brief will be prepared and emailed to her.</p>
+      <p style="color: var(--muted);"><strong>Reason for escalation (required):</strong></p>
+      <textarea id="escalateReason" placeholder="e.g., Strategic opportunity but requires leadership approval..." style="border-color: rgba(255,180,122,0.3);"></textarea>
+      <div style="margin-top: 20px; display: flex; gap: 12px;">
+        <button class="action-btn warning" style="flex: 1;" onclick="submitEscalation()">Escalate to Victoria</button>
+        <button style="flex: 1; padding: 12px; background: rgba(255,255,255,0.08); border: none; color: var(--white); border-radius: 8px; cursor: pointer;" onclick="closeModal('escalate')">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showTab(e, tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      
+      // Show selected tab
+      document.getElementById(tabName).classList.add('active');
+      e.target.classList.add('active');
+    }
+
+    function openModal(type) {
+      const modals = { approve: 'approveModal', reject: 'rejectModal', escalate: 'escalateModal' };
+      document.getElementById(modals[type]).classList.add('active');
+    }
+
+    function closeModal(type) {
+      const modals = { approve: 'approveModal', reject: 'rejectModal', escalate: 'escalateModal' };
+      document.getElementById(modals[type]).classList.remove('active');
+    }
+
+    function submitApproval() {
+      alert('Approved! Item moves to Phase 2 scope read.');
+      closeModal('approve');
+    }
+
+    function submitRejection() {
+      const reason = document.getElementById('rejectReason').value;
+      if (!reason.trim()) { alert('Please provide a reason.'); return; }
+      alert('Rejected and logged. Item removed from your queue.');
+      closeModal('reject');
+    }
+
+    function submitEscalation() {
+      const reason = document.getElementById('escalateReason').value;
+      if (!reason.trim()) { alert('Please provide a reason.'); return; }
+      alert('Escalated to Victoria! Brief has been emailed.');
+      closeModal('escalate');
+    }
+  </script>
+</body>
+</html>

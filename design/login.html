@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Savvy Scout — Login</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    /* Small layout tweaks that rely on tokens/components */
+    body{display:flex;align-items:center;justify-content:center;height:100vh}
+    .card{width:420px}
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <div class="logo">Savvy Scout</div>
+    <h1>Sign in to the dashboard</h1>
+    <p class="lead">Approve triage, review escalations, and manage capture briefs.</p>
+    <form onsubmit="event.preventDefault(); alert('Pretend login — use mark / your password')">
+      <label for="username">Username</label>
+      <input id="username" name="username" value="mark" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" />
+      <div style="margin-top:14px"><button class="btn">Sign in</button></div>
+    </form>
+    <div class="small">Use the account names: Mark, Kanvesh, Hammad, Victoria</div>
+  </div>
+</body>
+</html>

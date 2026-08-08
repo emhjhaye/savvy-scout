@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Savvy Scout — Review Notice</title>
+  <link rel="stylesheet" href="design-tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #071428;
+      color: #ffffff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+    }
+
+    .app-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #0a1f2e 0%, #071428 100%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .breadcrumb {
+      font-size: 13px;
+      color: #9aa3ad;
+    }
+
+    .breadcrumb a {
+      color: #ff2d58;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+
+    main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .queue-sidebar {
+      width: 280px;
+      background: rgba(0, 0, 0, 0.2);
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 12px;
+      color: #9aa3ad;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .sidebar-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .sidebar-item {
+      padding: 12px;
+      margin-bottom: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 12px;
+    }
+
+    .sidebar-item:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .sidebar-item.active {
+      background: rgba(255, 45, 88, 0.15);
+      border-color: #ff2d58;
+      color: #ff2d58;
+    }
+
+    .sidebar-item-ref {
+      font-weight: 700;
+      margin-bottom: 3px;
+      color: #ffffff;
+    }
+
+    .sidebar-item-title {
+      font-size: 11px;
+      color: #9aa3ad;
+      line-height: 1.3;
+    }
+
+    .sidebar-item.active .sidebar-item-title {
+      color: #ffffff;
+    }
+
+    .detail-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .detail-header {
+      background: rgba(0, 0, 0, 0.3);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 24px;
+    }
+
+    .detail-ref {
+      font-family: 'Poppins', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      color: #9aa3ad;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .detail-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 16px;
+      line-height: 1.3;
+    }
+
+    .detail-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      font-size: 13px;
+    }
+
+    .meta-item label {
+      display: block;
+      color: #9aa3ad;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .meta-item span {
+      color: #ffffff;
+      font-weight: 500;
+    }
+
+    .detail-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 24px;
+    }
+
+    .content-main {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #9aa3ad;
+      letter-spacing: 0.5px;
+    }
+
+    .gate-item {
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 3px solid #ff4d4f;
+      padding: 12px;
+      border-radius: 6px;
+    }
+
+    .gate-item.pass {
+      border-left-color: #00bfa6;
+    }
+
+    .gate-item.warning {
+      border-left-color: #ffb47a;
+    }
+
+    .gate-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .gate-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .gate-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(0, 191, 166, 0.2);
+      color: #00bfa6;
+    }
+
+    .gate-badge.fail {
+      background: rgba(255, 77, 79, 0.2);
+      color: #ff4d4f;
+    }
+
+    .gate-badge.warning {
+      background: rgba(255, 180, 122, 0.2);
+      color: #ffb47a;
+    }
+
+    .gate-reason {
+      font-size: 12px;
+      color: #9aa3ad;
+    }
+
+    .action-panel {
+      background: rgba(255, 45, 88, 0.08);
+      border: 1px solid rgba(255, 45, 88, 0.2);
+      border-radius: 12px;
+      padding: 16px;
+      height: fit-content;
+      position: sticky;
+      top: 0;
+    }
+
+    .action-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #ff2d58;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .decision-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .btn-decision {
+      width: 100%;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-approve {
+      background: #00bfa6;
+      color: #071428;
+    }
+
+    .btn-approve:hover {
+      background: #00a894;
+    }
+
+    .btn-reject {
+      background: rgba(255, 77, 79, 0.15);
+      color: #ff4d4f;
+      border: 1px solid rgba(255, 77, 79, 0.3);
+    }
+
+    .btn-reject:hover {
+      background: rgba(255, 77, 79, 0.25);
+    }
+
+    .btn-escalate {
+      background: rgba(255, 180, 122, 0.15);
+      color: #ffb47a;
+      border: 1px solid rgba(255, 180, 122, 0.3);
+    }
+
+    .btn-escalate:hover {
+      background: rgba(255, 180, 122, 0.25);
+    }
+
+    .decision-form {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      margin-bottom: 10px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      color: #9aa3ad;
+      font-weight: 600;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 10px;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 12px;
+      font-family: inherit;
+      resize: none;
+      min-height: 50px;
+    }
+
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #ff2d58;
+      background: rgba(0, 0, 0, 0.5);
+    }
+
+    .form-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn-submit {
+      flex: 1;
+      padding: 6px 10px;
+      background: #ff2d58;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-submit:hover {
+      background: #e6254a;
+    }
+
+    .btn-cancel {
+      flex: 1;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #9aa3ad;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-cancel:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Scrollbar */
+    .sidebar-list::-webkit-scrollbar,
+    .detail-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-list::-webkit-scrollbar-track,
+    .detail-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .sidebar-list::-webkit-scrollbar-thumb,
+    .detail-content::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 3px;
+    }
+
+    .sidebar-list::-webkit-scrollbar-thumb:hover,
+    .detail-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    @media (max-width: 1000px) {
+      .queue-sidebar {
+        width: 240px;
+      }
+
+      .detail-content {
+        grid-template-columns: 1fr;
+      }
+
+      .action-panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 768px) {
+      main {
+        flex-direction: column;
+      }
+
+      .queue-sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 120px;
+        border-right: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .sidebar-list {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+
+      .sidebar-item {
+        flex-shrink: 0;
+        min-width: 180px;
+      }
+
+      .detail-meta {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header>
+      <div class="breadcrumb">
+        <a href="dashboard-v2.html">← My Queue</a> / <strong>Phase 1 Review</strong>
+      </div>
+    </header>
+
+    <main>
+      <div class="queue-sidebar">
+        <div class="sidebar-header">Your Queue (16 items)</div>
+        <div class="sidebar-list">
+          <div class="sidebar-item active" onclick="selectQueueItem(this, 'REF-066189')">
+            <div class="sidebar-item-ref">REF-066189</div>
+            <div class="sidebar-item-title">Office Refurbishment — NHS Northern</div>
+          </div>
+          <div class="sidebar-item" onclick="selectQueueItem(this, 'REF-066201')">
+            <div class="sidebar-item-ref">REF-066201</div>
+            <div class="sidebar-item-title">Security Clearance — Defence</div>
+          </div>
+          <div class="sidebar-item" onclick="selectQueueItem(this, 'REF-066210')">
+            <div class="sidebar-item-ref">REF-066210</div>
+            <div class="sidebar-item-title">Managed Services — CPV Codes</div>
+          </div>
+          <div class="sidebar-item" onclick="selectQueueItem(this, 'REF-066188')">
+            <div class="sidebar-item-ref">REF-066188</div>
+            <div class="sidebar-item-title">Cloud Migration — City of London</div>
+          </div>
+          <div class="sidebar-item" onclick="selectQueueItem(this, 'REF-066185')">
+            <div class="sidebar-item-ref">REF-066185</div>
+            <div class="sidebar-item-title">Healthcare Analytics — NHS</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-panel">
+        <div class="detail-header">
+          <div class="detail-ref">REF-066189</div>
+          <div class="detail-title">Office Refurbishment Programme — Northern Facilities Hub</div>
+          <div class="detail-meta">
+            <div class="meta-item">
+              <label>Buyer</label>
+              <span>NHS Northern Trust</span>
+            </div>
+            <div class="meta-item">
+              <label>Value</label>
+              <span>£500K–£800K</span>
+            </div>
+            <div class="meta-item">
+              <label>Deadline</label>
+              <span>2026-08-22 (2 days left)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-content">
+          <div class="content-main">
+            <div class="section">
+              <div class="section-title">Gate Results</div>
+              
+              <div class="gate-item pass">
+                <div class="gate-header">
+                  <div class="gate-name">Gate 1: Sector & Owner</div>
+                  <div class="gate-badge pass">PASS</div>
+                </div>
+                <div class="gate-reason">NHS Healthcare → Hammad assigned</div>
+              </div>
+
+              <div class="gate-item fail">
+                <div class="gate-header">
+                  <div class="gate-name">Gate 2: Type of Work</div>
+                  <div class="gate-badge fail">FAIL</div>
+                </div>
+                <div class="gate-reason">Capital works/refurbishment, not bespoke software development</div>
+              </div>
+
+              <div class="gate-item pass">
+                <div class="gate-header">
+                  <div class="gate-name">Gate 3: Framework Status</div>
+                  <div class="gate-badge pass">PASS</div>
+                </div>
+                <div class="gate-reason">Direct procurement, no pre-existing framework</div>
+              </div>
+            </div>
+
+            <div class="section">
+              <div class="section-title">Opportunity Summary</div>
+              <p style="font-size: 13px; color: #9aa3ad; line-height: 1.5;">
+                Refurbishment of 8 office locations including new furniture, partition walls, and AV systems. Scope does not include software or integration components.
+              </p>
+            </div>
+          </div>
+
+          <div class="action-panel">
+            <div class="action-title">Your Decision</div>
+            <div class="decision-buttons">
+              <button class="btn-decision btn-approve" onclick="startDecision('approve')">✓ Approve for Phase 2</button>
+              <button class="btn-decision btn-reject" onclick="startDecision('reject')">✗ Reject</button>
+              <button class="btn-decision btn-escalate" onclick="startDecision('escalate')">⚠ Escalate to Victoria</button>
+            </div>
+            <div id="formContainer"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function selectQueueItem(element, refId) {
+      document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('active'));
+      element.classList.add('active');
+      
+      // In production: Load item data and update detail panel
+      console.log('Loading:', refId);
+    }
+
+    function startDecision(type) {
+      const container = document.getElementById('formContainer');
+      const labels = {
+        approve: { title: '✓ Approve for Phase 2', color: '#00bfa6' },
+        reject: { title: '✗ Reject this opportunity', color: '#ff4d4f' },
+        escalate: { title: '⚠ Escalate to Victoria', color: '#ffb47a' }
+      };
+
+      const config = labels[type];
+
+      container.innerHTML = `
+        <div class="decision-form" style="border: 1px solid ${config.color}33;">
+          <div class="form-group">
+            <label>Reason (required)</label>
+            <textarea id="reasonField" placeholder="Explain your decision..." autofocus></textarea>
+          </div>
+          <div class="form-buttons">
+            <button class="btn-submit" style="background: ${config.color};" onclick="submitDecision('${type}')">Submit</button>
+            <button class="btn-cancel" onclick="cancelDecision()">Cancel</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('reasonField').focus();
+    }
+
+    function submitDecision(type) {
+      const reason = document.getElementById('reasonField').value.trim();
+      if (!reason) {
+        alert('Please provide a reason');
+        return;
+      }
+
+      alert(`✓ Decision recorded: ${type.toUpperCase()}\n\nReason: ${reason}`);
+      document.getElementById('formContainer').innerHTML = '';
+    }
+
+    function cancelDecision() {
+      document.getElementById('formContainer').innerHTML = '';
+    }
+  </script>
+</body>
+</html>
