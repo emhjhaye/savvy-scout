@@ -68,7 +68,7 @@ def mark_client(app):
 
 def test_admin_index_requires_correction_authority(mark_client):
     resp = mark_client.get("/admin/", follow_redirects=True)
-    assert b"Only Victoria and Kanvesh" in resp.data
+    assert b"Only Victoria, Kanvesh or the admin account" in resp.data
 
 
 def test_admin_index_shows_sector_keywords_table(victoria_client):

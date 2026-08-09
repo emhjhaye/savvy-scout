@@ -287,7 +287,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     is_victoria INTEGER NOT NULL DEFAULT 0,
     is_admin INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    teams_webhook_url TEXT
 );
 
 -- Config: Trifork capability profile fed to the Claude API scope read (B2).

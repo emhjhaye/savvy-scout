@@ -42,12 +42,18 @@
 </style>
 
 <div class="admin-nav">
+  {% if has_correction_authority %}
   {% for slug, label, _table_names in groups %}
   <a href="#group-{{ slug }}">{{ label }}</a>
   {% endfor %}
   <a href="#correction-log">Correction Log</a>
+  {% endif %}
+  {% if is_super_admin %}
+  <a href="#group-users">Manage Users</a>
+  {% endif %}
 </div>
 
+{% if has_correction_authority %}
 <div class="card">
   <div class="card-body">
     <p style="font-size: 13px; color: var(--text-muted);">Every save here is logged to the rule-correction log below and requires a reason. Gate logic reads live from these tables.</p>
@@ -80,9 +86,35 @@
       <tbody>
       {% for row in rows %}
       <tr class="admin-data-row">
-        <form method="post" action="{{ url_for('admin.update_row', table_name=table_name, row_id=row['id']) }}">
+        <form method="post" action="{{ url_for('admin.assign_owner', row_id=row['id']) if table_name == 'config_owner_map' else url_for('admin.update_row', table_name=table_name, row_id=row['id']) }}">
           {% for col in columns %}
+            {% if table_name == 'config_owner_map' and col['name'] == 'sector' %}
+            <td>
+              <strong>{{ row['sector'] }}</strong>
+              <input type="hidden" name="sector" value="{{ row['sector'] }}">
+            </td>
+            {% elif table_name == 'config_owner_map' and col['name'] == 'owner' %}
+            <td>
+              <select name="owner" class="owner-select" onchange="ownerSelectChanged(this);">
+                {% for name in owner_choices %}
+                <option value="{{ name }}" {% if name == row['owner'] %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+                {% if can_create_users %}
+                <option value="__new__">+ New person…</option>
+                {% endif %}
+              </select>
+              <div class="owner-contact-fields" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+                <input type="text" class="new-name-field" name="new_display_name" placeholder="Name" style="display: none;">
+                <input type="text" name="owner_email" placeholder="Email" value="{{ owner_contacts.get(row['owner'], {}).get('email', '') }}">
+                <input type="text" name="owner_teams_webhook_url" placeholder="Teams webhook (optional)" value="{{ owner_contacts.get(row['owner'], {}).get('teams_webhook_url', '') }}">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 12px;">
+                  <input type="checkbox" name="owner_is_victoria" {% if owner_contacts.get(row['owner'], {}).get('is_victoria') %}checked{% endif %}> Bid Director authority
+                </label>
+              </div>
+            </td>
+            {% else %}
             <td><input type="text" name="{{ col['name'] }}" value="{{ row[col['name']] if row[col['name']] is not none else '' }}"></td>
+            {% endif %}
           {% endfor %}
           <td class="reason-col"><input type="text" name="reason" placeholder="Reason required" required></td>
           <td class="actions-cell">
@@ -145,6 +177,101 @@
   </table>
   </div>
 </div>
+{% endif %}
+
+{% if is_super_admin %}
+<h3 class="admin-group-title" id="group-users">Manage Users</h3>
+
+<div class="card">
+  <div class="card-body">
+    <p style="font-size: 13px; color: var(--text-muted);">
+      Add a teammate below and they'll get an email with the app link and a temporary password.
+      {% if has_correction_authority %}You can also create a new person directly from Sectors &amp;
+      Owners above (pick "+ New person…" on the sector they'll own) if you want the account and
+      sector assignment created together in one save.{% endif %}
+      If email isn't configured yet, the link and password are shown on screen instead so you can
+      send them yourself.
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Add a teammate</h2>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('admin.add_user') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+      <div>
+        <label for="new-display-name" style="display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Display name</label>
+        <input type="text" id="new-display-name" name="display_name" placeholder="e.g. Priya" required>
+      </div>
+      <div>
+        <label for="new-email" style="display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Email</label>
+        <input type="text" id="new-email" name="email" placeholder="name@bidsavvy.io" required>
+      </div>
+      <div>
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; padding-bottom: 9px;">
+          <input type="checkbox" name="is_victoria"> Bid Director authority
+        </label>
+      </div>
+      <button type="submit" class="btn btn-approve">+ Add &amp; invite</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Accounts</h2>
+    <span class="badge badge-count" style="background: var(--info);">{{ users | length }}</span>
+  </div>
+  <div style="overflow-x: auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Display name</th>
+        <th>Email</th>
+        <th>Teams webhook</th>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for user in users %}
+      <tr>
+        <td style="font-weight: 600;">{{ user['display_name'] }}</td>
+        <td colspan="2">
+          <form method="post" action="{{ url_for('admin.update_user_contact', user_id=user['id']) }}" style="display: flex; gap: 6px; align-items: center;">
+            <input type="text" name="email" value="{{ user['email'] or '' }}" placeholder="name@bidsavvy.io" style="font-size: 12px; padding: 4px 6px; width: 160px;">
+            <input type="text" name="teams_webhook_url" value="{{ user['teams_webhook_url'] or '' }}" placeholder="Teams webhook URL" style="font-size: 12px; padding: 4px 6px; width: 200px;">
+            <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+          </form>
+        </td>
+        <td style="font-family: monospace; font-size: 12px;">{{ user['username'] }}</td>
+        <td>
+          {% if user['is_admin'] %}<span class="badge badge-strong">Admin</span>{% endif %}
+          {% if user['is_victoria'] %}<span class="badge badge-med">Bid Director</span>{% endif %}
+          {% if not user['is_admin'] and not user['is_victoria'] %}<span class="badge badge-unknown">Sector Owner</span>{% endif %}
+        </td>
+        <td style="font-size: 12px; color: var(--text-muted);">{{ user['created_at'][:10] }}</td>
+        <td class="actions-col">
+          <form method="post" action="{{ url_for('admin.reset_user_password', user_id=user['id']) }}" style="display: inline;">
+            <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Reset {{ user['display_name'] }}\'s password and re-send the invite email?');">Reset password</button>
+          </form>
+          {% if user['id']|string != current_user.id %}
+          <form method="post" action="{{ url_for('admin.delete_user', user_id=user['id']) }}" style="display: inline;">
+            <button type="submit" class="btn btn-reject btn-sm" onclick="return confirm('Remove {{ user['display_name'] }}\'s account? This cannot be undone.');">Remove</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
 
 <script>
   document.querySelectorAll('.admin-search').forEach(function (input) {
@@ -166,6 +293,31 @@
       if (emptyRow) emptyRow.style.display = (query && visibleCount === 0) ? '' : 'none';
     });
   });
+
+  // Sectors & Owners: swap the email/Teams/Bid Director fields to match
+  // whichever owner is selected (2026-08-09), so editing an existing
+  // person's contact info happens right here instead of in Manage Users.
+  const ownerContacts = {{ owner_contacts | default({}) | tojson }};
+  function ownerSelectChanged(select) {
+    const fields = select.closest('td').querySelector('.owner-contact-fields');
+    const nameField = fields.querySelector('.new-name-field');
+    const emailField = fields.querySelector('input[name="owner_email"]');
+    const teamsField = fields.querySelector('input[name="owner_teams_webhook_url"]');
+    const victoriaField = fields.querySelector('input[name="owner_is_victoria"]');
+    if (select.value === '__new__') {
+      nameField.style.display = '';
+      nameField.value = '';
+      emailField.value = '';
+      teamsField.value = '';
+      victoriaField.checked = false;
+    } else {
+      nameField.style.display = 'none';
+      const contact = ownerContacts[select.value] || {};
+      emailField.value = contact.email || '';
+      teamsField.value = contact.teams_webhook_url || '';
+      victoriaField.checked = !!contact.is_victoria;
+    }
+  }
 </script>
 
 {% endblock %}

@@ -113,6 +113,15 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
         conn.execute("UPDATE users SET is_admin = 1 WHERE username = 'mark'")
 
+    # Teams notifications (2026-08-09): a per-user Microsoft Teams incoming
+    # webhook URL, so a new-opportunity notification can be posted straight
+    # into that owner's Teams alongside the email -- no Azure AD app
+    # registration needed (the Graph app-registration for this app was never
+    # completed, see notifications.py), just a webhook connector the owner
+    # adds to a channel/chat of their choosing and pastes the URL for here.
+    if "teams_webhook_url" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN teams_webhook_url TEXT")
+
     if missing_additional_cols:
         import json as _json
 

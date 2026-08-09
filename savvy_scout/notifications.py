@@ -71,3 +71,61 @@ def send_account_invite_email(
         "This is a temporary password -- ask Mark to reset it if you'd like a new one.\n"
     )
     send_email(to_address, "Your Savvy Scout account is ready", body)
+
+
+def send_new_opportunity_email(
+    to_address: str, display_name: str, ref: str, title: str, buyer: str | None,
+    deadline: str | None, app_url: str, notice_id: int,
+) -> None:
+    """Sent to a sector owner the first time a new notice is triaged and
+    assigned to them (2026-08-09), so an opportunity doesn't just sit
+    unnoticed in the in-app "needs attention" badge until they next open the
+    dashboard."""
+    body = (
+        f"Hi {display_name},\n\n"
+        f"A new opportunity has been assigned to you on Savvy Scout:\n\n"
+        f"  {title}\n"
+        f"  Buyer: {buyer or 'Unknown'}\n"
+        f"  Reference: {ref}\n"
+        f"  Deadline: {deadline or 'Not stated'}\n\n"
+        f"View it here: {app_url}/notices/{notice_id}\n"
+    )
+    send_email(to_address, f"New opportunity: {title}", body)
+
+
+def send_new_opportunity_teams_message(
+    webhook_url: str, display_name: str, ref: str, title: str, buyer: str | None,
+    deadline: str | None, app_url: str, notice_id: int,
+) -> None:
+    """Posts the same new-opportunity alert to the owner's configured Teams
+    incoming webhook (2026-08-09). Uses the legacy Office 365 Connector
+    MessageCard format -- still the format Teams incoming webhooks accept,
+    and needs no Azure AD app registration (unlike a real per-user Graph
+    chat message, which this app has no permissions for)."""
+    import requests
+
+    card = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "summary": f"New opportunity: {title}",
+        "themeColor": "AF1F23",
+        "title": f"New opportunity assigned to {display_name}",
+        "text": (
+            f"**{title}**\n\n"
+            f"Buyer: {buyer or 'Unknown'}  \n"
+            f"Reference: {ref}  \n"
+            f"Deadline: {deadline or 'Not stated'}"
+        ),
+        "potentialAction": [
+            {
+                "@type": "OpenUri",
+                "name": "View in Savvy Scout",
+                "targets": [{"os": "default", "uri": f"{app_url}/notices/{notice_id}"}],
+            }
+        ] if app_url else [],
+    }
+    try:
+        response = requests.post(webhook_url, json=card, timeout=15)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise NotificationError(f"Failed to post Teams notification: {exc}") from exc

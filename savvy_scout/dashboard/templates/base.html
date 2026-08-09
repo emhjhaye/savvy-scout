@@ -503,6 +503,7 @@
       <span class="wordmark">Bid Savvy<span class="accent"> Scout</span></span>
     </div>
     <div class="tagline">Tender Scouting & Bid Triage</div>
+    <div class="tagline" style="margin-top: 2px;">Client: Trifork</div>
   </div>
 
   <div class="sidebar-user">
@@ -544,16 +545,9 @@
   <div class="sidebar-section">
     <div class="sidebar-section-label">Administration</div>
     <ul class="sidebar-nav">
-      {% if current_user.is_victoria or current_user.display_name == 'Kanvesh' %}
-      <li><a href="{{ url_for('admin.index') }}" class="{% if request.endpoint == 'admin.index' or request.endpoint == 'admin.update_row' or request.endpoint == 'admin.add_row' or request.endpoint == 'admin.delete_row' %}active{% endif %}">
-        <span class="nav-icon">⚙️</span><span class="nav-label">Config &amp; Rules</span>
+      <li><a href="{{ url_for('admin.index') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.') %}active{% endif %}">
+        <span class="nav-icon">⚙️</span><span class="nav-label">Admin</span>
       </a></li>
-      {% endif %}
-      {% if current_user.is_admin %}
-      <li><a href="{{ url_for('admin.users_index') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.users') or request.endpoint in ('admin.add_user', 'admin.delete_user', 'admin.reset_user_password') %}active{% endif %}">
-        <span class="nav-icon">👤</span><span class="nav-label">Manage Users</span>
-      </a></li>
-      {% endif %}
     </ul>
   </div>
   {% endif %}
@@ -573,6 +567,9 @@
   <div class="sidebar-divider"></div>
   <div class="sidebar-section" style="margin-top: auto;">
     <ul class="sidebar-nav">
+      <li><a href="{{ url_for('auth.change_password') }}" class="{% if request.endpoint == 'auth.change_password' %}active{% endif %}">
+        <span class="nav-icon">🔑</span><span class="nav-label">Change Password</span>
+      </a></li>
       <li><a href="{{ url_for('auth.logout') }}">
         <span class="nav-icon">🚪</span><span class="nav-label">Sign Out</span>
       </a></li>

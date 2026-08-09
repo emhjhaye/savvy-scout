@@ -22,6 +22,8 @@ decisions you made on the flagged disagreements:
 """
 
 import json
+import logging
+import os
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -29,7 +31,14 @@ from datetime import datetime, timezone
 
 from savvy_scout.logging_util import log_audit, log_status_change
 from savvy_scout.models.notice import Status, validate_transition
+from savvy_scout.notifications import (
+    NotificationError,
+    send_new_opportunity_email,
+    send_new_opportunity_teams_message,
+)
 from savvy_scout.triage.sector_classifier import classify_sector, is_contested, uncoupled_candidate_sectors
+
+logger = logging.getLogger(__name__)
 
 GATE_ORDER = ["gate1", "gate2", "gate3", "gate4", "gate5", "filter3"]
 
@@ -533,6 +542,48 @@ def _evaluate_and_record(
     return headline_gate, headline_out, headline_reason, results
 
 
+def _notify_owner_of_new_opportunity(conn: sqlite3.Connection, notice_id: int) -> None:
+    """Best-effort email + Teams alert to the assigned sector owner
+    (2026-08-09) -- fired once, from triage_notice's first pass only (never
+    retriage_notice, so a config-correction re-evaluation doesn't re-notify
+    an owner about a notice they've already seen). Never raises: a missing
+    owner email/webhook, or a down SMTP server/Teams webhook, must not stop
+    the sweep from triaging the rest of the batch."""
+    notice = conn.execute(
+        "SELECT ref, title, buyer, deadline, owner FROM notices WHERE id = ?", (notice_id,)
+    ).fetchone()
+    if not notice or not notice["owner"]:
+        return
+    user = conn.execute(
+        "SELECT display_name, email, teams_webhook_url FROM users WHERE display_name = ?", (notice["owner"],)
+    ).fetchone()
+    if not user:
+        return
+    app_url = (os.environ.get("SAVVY_SCOUT_APP_BASE_URL") or "").rstrip("/")
+
+    if user["email"]:
+        try:
+            send_new_opportunity_email(
+                user["email"], user["display_name"], notice["ref"], notice["title"],
+                notice["buyer"], notice["deadline"], app_url, notice_id,
+            )
+        except NotificationError as exc:
+            logger.warning("Could not send new-opportunity email for notice %s: %s", notice_id, exc)
+    else:
+        logger.debug("No email on file for owner %r; skipping new-opportunity email.", notice["owner"])
+
+    if user["teams_webhook_url"]:
+        try:
+            send_new_opportunity_teams_message(
+                user["teams_webhook_url"], user["display_name"], notice["ref"], notice["title"],
+                notice["buyer"], notice["deadline"], app_url, notice_id,
+            )
+        except NotificationError as exc:
+            logger.warning("Could not post new-opportunity Teams message for notice %s: %s", notice_id, exc)
+    else:
+        logger.debug("No Teams webhook on file for owner %r; skipping new-opportunity Teams message.", notice["owner"])
+
+
 def triage_notice(conn: sqlite3.Connection, notice_id: int, actor: str = "system_triage") -> str:
     """Runs Phase 1 triage on one notice, records every gate result, moves
     the notice from NEW to PHASE1_TRIAGED, then routes based on headline outcome:
@@ -635,6 +686,10 @@ def triage_notice(conn: sqlite3.Connection, notice_id: int, actor: str = "system
         )
 
     # No auto-escalation at Phase 1 - FLAGs get Phase 2 assessment first
+
+    final_status = conn.execute("SELECT status FROM notices WHERE id = ?", (notice_id,)).fetchone()["status"]
+    if final_status != Status.REJECTED.value:
+        _notify_owner_of_new_opportunity(conn, notice_id)
 
     return headline_out
 
