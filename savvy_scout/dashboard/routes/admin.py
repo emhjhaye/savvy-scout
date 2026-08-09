@@ -13,7 +13,7 @@ from werkzeug.security import generate_password_hash
 
 from savvy_scout.dashboard.auth import get_db
 from savvy_scout.logging_util import log_audit
-from savvy_scout.notifications import NotificationError, send_account_invite_email
+from savvy_scout.notifications import NotificationError, send_account_invite_email, send_account_link_email
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -537,7 +537,11 @@ def update_user_contact(user_id):
     (mark, kanvesh, hammad, victoria), which have neither on file since they
     were created before email/Teams notifications existed (2026-08-09) --
     lets an owner actually receive new-opportunity alerts without needing a
-    full account re-creation."""
+    full account re-creation. If this is the first time an email is set on
+    the account (it was empty before), also emails the person the app link
+    (no password -- this isn't a new account, see send_account_link_email)
+    so they actually receive something the moment they gain a real email on
+    file, matching what "Add a teammate" already does for brand-new users."""
     if not _is_super_admin():
         flash("Only the admin account can manage users.", "error")
         return redirect(url_for("queues.index"))
@@ -566,11 +570,30 @@ def update_user_contact(user_id):
             flash(f"Another user already has the email '{email}'.", "error")
             return redirect(url_for("admin.users_index"))
 
+    is_new_email = bool(email) and not row["email"]
+
     conn.execute(
         "UPDATE users SET email = ?, teams_webhook_url = ? WHERE id = ?",
         (email or None, teams_webhook_url or None, user_id),
     )
     conn.commit()
+
+    if is_new_email:
+        try:
+            send_account_link_email(email, row["display_name"], _app_url())
+            flash(f"Updated {row['display_name']}'s contact details and emailed them the app link.")
+        except NotificationError as exc:
+            flash(
+                f"Updated {row['display_name']}'s contact details, but the link email couldn't be "
+                f"sent ({exc}). Share this manually: {_app_url()}",
+                "error",
+            )
+        log_audit(
+            conn, "user", email, "contact_updated", current_user.display_name,
+            f"Set email to {email} for {row['display_name']} (link emailed)",
+        )
+        return redirect(url_for("admin.users_index"))
+
     log_audit(
         conn, "user", email or row["username"], "contact_updated", current_user.display_name,
         f"Set email to {email or '(cleared)'} and Teams webhook to "

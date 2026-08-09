@@ -73,6 +73,20 @@ def send_account_invite_email(
     send_email(to_address, "Your Savvy Scout account is ready", body)
 
 
+def send_account_link_email(to_address: str, display_name: str, app_url: str) -> None:
+    """Sent when an admin sets an email on an account that ALREADY has
+    access (2026-08-09) -- e.g. backfilling contact info for one of the four
+    originally-seeded accounts. Deliberately no password here (unlike
+    send_account_invite_email): this isn't a new account, just handing over
+    the link since the person already knows their own login."""
+    body = (
+        f"Hi {display_name},\n\n"
+        f"Your email is now linked to your existing Savvy Scout account: {app_url}\n\n"
+        "Log in with your usual username/password.\n"
+    )
+    send_email(to_address, "Your Savvy Scout app link", body)
+
+
 def send_new_opportunity_email(
     to_address: str, display_name: str, ref: str, title: str, buyer: str | None,
     deadline: str | None, app_url: str, notice_id: int,
