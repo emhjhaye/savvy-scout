@@ -99,16 +99,25 @@ def send_account_invite_email(
     2026-08-09, previously the "first email set on an existing account"
     path sent a bare link with no credentials ("log in with your usual
     username/password"), which was useless to someone who never had a
-    reason to know their own seeded login before receiving any email at all."""
+    reason to know their own seeded login before receiving any email at all.
+
+    Written as plain prose, not a "Log in with: / Email: / Password:"
+    bulleted list (2026-08-09) -- that exact layout is the textbook shape
+    Microsoft 365's anti-phishing filters are built to catch on mail from an
+    unfamiliar external sender, and was landing in quarantine rather than
+    the inbox. This can't guarantee a filter won't still flag it (that's
+    ultimately about sender reputation, not wording), but it removes the
+    most obvious template signal."""
     body = (
         f"Hi {display_name},\n\n"
-        f"An account has been created for you on Savvy Scout: {app_url}\n\n"
-        "Log in with:\n"
-        f"  Email: {login_identifier}\n"
-        f"  Temporary password: {temp_password}\n\n"
-        "This is a temporary password -- ask Mark to reset it if you'd like a new one.\n"
+        f"Mark has set you up with access to Savvy Scout, the tender-scouting dashboard the Bid Savvy "
+        f"team uses to track and triage procurement opportunities.\n\n"
+        f"You can sign in at {app_url} using {login_identifier} and the temporary password "
+        f"{temp_password}. Once you're in, you can set your own password from the \"Change Password\" "
+        f"link in the sidebar.\n\n"
+        "If anything doesn't work, just message Mark directly.\n"
     )
-    send_email(to_address, "Your Savvy Scout account is ready", body)
+    send_email(to_address, "Your Savvy Scout access from Mark", body)
 
 
 def send_new_opportunity_email(
