@@ -182,6 +182,46 @@
       </div>
     </div>
 
+    <div class="panel" style="margin-bottom: 6px;">
+      <div class="panel-head">
+        <div class="panel-title">Notices by source</div>
+        <div class="panel-subtitle">Which portal each opportunity was swept from &mdash; by publication date, unfiltered by sector</div>
+      </div>
+      <div style="overflow-x: auto;">
+      <table class="perf-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            {% for day in source_performance.day_headers %}
+            <th title="{{ day.date }}">{{ day.label }}</th>
+            {% endfor %}
+            <th>This week</th>
+            <th>This month</th>
+            <th>YTD</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in source_performance.rows %}
+          <tr class="{% if row.get('is_total') %}total-row{% endif %}{% if row.get('is_grand_total') %} grand-total-row{% endif %}">
+            <td>
+              <span class="sector-cell">
+                {% if not row.get('is_total') %}<span class="perf-swatch" style="background: {{ sector_palette[loop.index0 % sector_palette|length] }};"></span>{% endif %}
+                {{ row.sector }}
+              </span>
+            </td>
+            {% for count in row.days %}
+            <td>{{ count }}</td>
+            {% endfor %}
+            <td>{{ row.week }}</td>
+            <td>{{ row.month }}</td>
+            <td>{{ row.ytd }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
     <div class="panel-grid">
       <div class="panel">
         <div class="panel-head">

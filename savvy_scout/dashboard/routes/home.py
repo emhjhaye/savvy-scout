@@ -143,6 +143,23 @@ def _perf_row(label, bucket, weekdays, **extra):
     }
 
 
+def _perf_windows(now_uk: datetime):
+    """Shared Mon-Fri-this-week + week/month/YTD window boundaries for every
+    Overview performance table (Sector, Source, ...), so they all report
+    against the exact same date ranges."""
+    today = now_uk.date()
+    week_start = today - timedelta(days=now_uk.weekday())
+    week_end = week_start + timedelta(days=6)
+    weekdays = [week_start + timedelta(days=i) for i in range(5)]
+    month_start = today.replace(day=1)
+    year_start = today.replace(month=1, day=1)
+    return weekdays, week_start, week_end, month_start, year_start
+
+
+def _day_headers(weekdays):
+    return [{"label": label, "date": _pretty_date(d)} for label, d in zip(WEEKDAY_LABELS, weekdays)]
+
+
 def _build_sector_performance(conn, now_uk: datetime) -> dict:
     """Sector Performance (2026-08-09): per-sector opportunity counts for
     Mon-Fri of the CURRENT week, then This Week/This Month/YTD, dated by
@@ -151,12 +168,7 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
     also counts) and "Total Swept" (every notice pulled, matched to a sector
     or not) -- comparing the two shows how much of the raw sweep volume
     actually lands in-scope."""
-    today = now_uk.date()
-    week_start = today - timedelta(days=now_uk.weekday())
-    week_end = week_start + timedelta(days=6)
-    weekdays = [week_start + timedelta(days=i) for i in range(5)]
-    month_start = today.replace(day=1)
-    year_start = today.replace(month=1, day=1)
+    weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
 
     predicate = _build_scope_predicate(conn)
     rows = conn.execute("SELECT sector, cpv_primary, uk_stage, published_at, first_seen_at FROM notices").fetchall()
@@ -183,12 +195,39 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
     perf_rows.append(_perf_row("In Sector (total)", in_scope_total, weekdays, is_total=True))
     perf_rows.append(_perf_row("Total Swept (all sources)", swept_total, weekdays, is_total=True, is_grand_total=True))
 
-    return {
-        "rows": perf_rows,
-        "day_headers": [
-            {"label": label, "date": _pretty_date(d)} for label, d in zip(WEEKDAY_LABELS, weekdays)
-        ],
-    }
+    return {"rows": perf_rows, "day_headers": _day_headers(weekdays)}
+
+
+def _build_source_performance(conn, now_uk: datetime) -> dict:
+    """Notices by Source (2026-08-09): where each swept notice actually came
+    from (Find a Tender, Contracts Finder, Public Contracts Scotland,
+    Sell2Wales, eTendersNI -- see sources/ and config_sources), same
+    Mon-Fri/week/month/YTD shape as Sector Performance, dated by publication
+    date. Unfiltered by sector/CPV scope -- this is about sweep coverage per
+    source, not what's in scope, so it should total to the same "Total
+    Swept" figure Sector Performance shows."""
+    weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
+
+    rows = conn.execute("SELECT source, published_at, first_seen_at FROM notices").fetchall()
+
+    source_buckets: dict[str, dict] = {}
+    grand_total = _new_perf_bucket(weekdays)
+
+    for row in rows:
+        report_date = _report_date(row)
+        if report_date is None:
+            continue
+        _accumulate_perf(grand_total, report_date, weekdays, week_start, week_end, month_start, year_start)
+        bucket = source_buckets.setdefault(row["source"] or "Unknown", _new_perf_bucket(weekdays))
+        _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start)
+
+    perf_rows = [
+        _perf_row(source, bucket, weekdays)
+        for source, bucket in sorted(source_buckets.items(), key=lambda kv: kv[1]["ytd"], reverse=True)
+    ]
+    perf_rows.append(_perf_row("Total", grand_total, weekdays, is_total=True, is_grand_total=True))
+
+    return {"rows": perf_rows, "day_headers": _day_headers(weekdays)}
 
 
 @home_bp.route("/")
@@ -299,6 +338,7 @@ def index():
     # from a stored ISO timestamp with mixed UTC offsets isn't reliable to do
     # in raw SQL.
     sector_performance = _build_sector_performance(conn, uk_now)
+    source_performance = _build_source_performance(conn, uk_now)
 
     latest_triage_rows = conn.execute(
         f"""
@@ -357,6 +397,7 @@ def index():
         "home.html",
         scouting_report=scouting_report,
         sector_performance=sector_performance,
+        source_performance=source_performance,
         sweep_note={"last_run": sweep_last_run, "next_run": sweep_next_run},
         sector_palette=SECTOR_PALETTE,
         triage_colors=TRIAGE_COLORS,
