@@ -198,6 +198,143 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
     return {"rows": perf_rows, "day_headers": _day_headers(weekdays)}
 
 
+def _build_upcoming_deadlines(conn, in_scope_where, in_scope_params, limit=8) -> list[dict]:
+    """Nearest submission deadlines across every sector (2026-08-09), so
+    urgency is visible regardless of who owns the notice -- the per-owner
+    queues already sort by deadline, but only within one person's own
+    sector(s)."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = conn.execute(
+        f"""
+        SELECT id, ref, title, buyer, sector, owner, deadline
+        FROM notices
+        WHERE {in_scope_where} AND deadline IS NOT NULL AND deadline >= ?
+        ORDER BY deadline ASC
+        LIMIT ?
+        """,
+        (*in_scope_params, today, limit),
+    ).fetchall()
+    return [
+        {
+            "id": r["id"], "ref": r["ref"], "title": r["title"], "buyer": r["buyer"],
+            "sector": r["sector"], "owner": r["owner"], "deadline": r["deadline"][:10],
+        }
+        for r in rows
+    ]
+
+
+# Cumulative pipeline funnel (2026-08-09): each stage's count includes every
+# notice that has REACHED that stage or gone further, not just notices
+# currently sitting there -- e.g. "Escalated" also counts Approved/Capture
+# Brief Drafted/etc, since those all passed through Escalated on the way.
+# That's what makes it a funnel (monotonically non-increasing bars) instead
+# of just the current status breakdown Sector Performance/Opportunities
+# already show.
+_FUNNEL_STAGES = [
+    ("Phase 1 Triaged", None),  # every in-scope notice except still-NEW
+    ("Phase 2 Scoped", (
+        "PHASE2_SCOPED", "AWAITING_PHASE2_APPROVAL", "ESCALATED_TO_VICTORIA",
+        "APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE",
+    )),
+    ("Escalated to Victoria", (
+        "ESCALATED_TO_VICTORIA", "APPROVED", "CAPTURE_BRIEF_DRAFTED",
+        "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE",
+    )),
+    ("Approved", ("APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE")),
+]
+
+
+def _build_pipeline_funnel(conn, in_scope_where, in_scope_params) -> dict:
+    rows = conn.execute(
+        f"SELECT status, COUNT(*) AS cnt FROM notices WHERE {in_scope_where} GROUP BY status",
+        tuple(in_scope_params),
+    ).fetchall()
+    counts = {r["status"]: r["cnt"] for r in rows}
+    total = sum(counts.values())
+
+    stages = [{"label": "Swept (in scope)", "value": total}]
+    for label, statuses in _FUNNEL_STAGES:
+        value = (total - counts.get("NEW", 0)) if statuses is None else sum(counts.get(s, 0) for s in statuses)
+        stages.append({"label": label, "value": value})
+
+    max_value = stages[0]["value"] or 1
+    for stage in stages:
+        stage["pct"] = round(stage["value"] / max_value * 100, 1) if max_value else 0
+
+    return {
+        "stages": stages,
+        "rejected": counts.get("REJECTED", 0),
+        "parked": counts.get("PARKED", 0),
+        "monitoring": counts.get("MONITORING", 0),
+    }
+
+
+# "Open" = still needs someone's attention or active bid work -- excludes
+# terminal/closed-out statuses (Rejected, Parked, Monitoring, Active) so a
+# backlog reads as "notices still moving through the pipeline," not
+# "everything ever assigned to this person."
+_OPEN_STATUSES = (
+    "TO_REVIEW", "HANDOFF", "PHASE2_SCOPED", "AWAITING_PHASE2_APPROVAL",
+    "ESCALATED_TO_VICTORIA", "APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED",
+)
+
+
+def _build_owner_workload(conn, in_scope_where, in_scope_params) -> list[dict]:
+    placeholders = ", ".join("?" for _ in _OPEN_STATUSES)
+    rows = conn.execute(
+        f"""
+        SELECT owner, COUNT(*) AS cnt
+        FROM notices
+        WHERE {in_scope_where} AND owner IS NOT NULL AND status IN ({placeholders})
+        GROUP BY owner
+        ORDER BY cnt DESC
+        """,
+        (*in_scope_params, *_OPEN_STATUSES),
+    ).fetchall()
+    return [{"owner": r["owner"], "count": r["cnt"]} for r in rows]
+
+
+def _build_contract_expiry_radar(conn, limit=8) -> list[dict]:
+    """Soonest-expiring incumbent contracts (2026-07's expiry radar, see
+    sweep/expiry_radar.py) -- re-procurement leads, a separate feed from
+    fresh notices, worth surfacing on the same Overview since they're the
+    same kind of "opportunity to watch for.\""""
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = conn.execute(
+        """
+        SELECT notice_ref, buyer, title, end_date, review_date
+        FROM contract_expiry
+        WHERE end_date >= ?
+        ORDER BY end_date ASC
+        LIMIT ?
+        """,
+        (today, limit),
+    ).fetchall()
+    return [
+        {
+            "notice_ref": r["notice_ref"], "buyer": r["buyer"], "title": r["title"],
+            "end_date": r["end_date"][:10], "review_date": r["review_date"][:10],
+        }
+        for r in rows
+    ]
+
+
+def _build_top_buyers(conn, in_scope_where, in_scope_params, limit=8) -> list[dict]:
+    rows = conn.execute(
+        f"""
+        SELECT buyer, COUNT(*) AS cnt
+        FROM notices
+        WHERE {in_scope_where} AND buyer IS NOT NULL
+        GROUP BY buyer
+        ORDER BY cnt DESC, buyer ASC
+        LIMIT ?
+        """,
+        (*in_scope_params, limit),
+    ).fetchall()
+    max_count = rows[0]["cnt"] if rows else 1
+    return [{"buyer": r["buyer"], "count": r["cnt"], "pct": round(r["cnt"] / max_count * 100, 1)} for r in rows]
+
+
 def _build_source_performance(conn, now_uk: datetime) -> dict:
     """Notices by Source (2026-08-09): where each swept notice actually came
     from (Find a Tender, Contracts Finder, Public Contracts Scotland,
@@ -339,6 +476,11 @@ def index():
     # in raw SQL.
     sector_performance = _build_sector_performance(conn, uk_now)
     source_performance = _build_source_performance(conn, uk_now)
+    upcoming_deadlines = _build_upcoming_deadlines(conn, in_scope_where, in_scope_params)
+    pipeline_funnel = _build_pipeline_funnel(conn, in_scope_where, in_scope_params)
+    owner_workload = _build_owner_workload(conn, in_scope_where, in_scope_params)
+    contract_expiry_radar = _build_contract_expiry_radar(conn)
+    top_buyers = _build_top_buyers(conn, in_scope_where, in_scope_params)
 
     latest_triage_rows = conn.execute(
         f"""
@@ -398,6 +540,11 @@ def index():
         scouting_report=scouting_report,
         sector_performance=sector_performance,
         source_performance=source_performance,
+        upcoming_deadlines=upcoming_deadlines,
+        pipeline_funnel=pipeline_funnel,
+        owner_workload=owner_workload,
+        contract_expiry_radar=contract_expiry_radar,
+        top_buyers=top_buyers,
         sweep_note={"last_run": sweep_last_run, "next_run": sweep_next_run},
         sector_palette=SECTOR_PALETTE,
         triage_colors=TRIAGE_COLORS,
