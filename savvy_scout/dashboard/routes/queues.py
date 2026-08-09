@@ -134,16 +134,12 @@ def index():
     settings = current_app.config["SAVVY_SCOUT_SETTINGS"]
     in_scope_where, in_scope_params = in_scope_filter_sql(conn)
 
-    # Owner-scoped (2026-07-30): this used to be a global count across every
-    # sector, so a sector owner with e.g. 9 of their own pending scope reads
-    # saw "46 notices are waiting" (everyone's combined) and assumed it was
-    # about their own queue. Victoria has no sector of her own, so she keeps
-    # seeing the whole pipeline's count, same rule as everywhere else.
+    # Owner-scoped (2026-07-30). Victoria never sees this at all (2026-08-09):
+    # Phase 2 scope reads are an owner-level concern, not hers -- she only
+    # acts once a notice reaches her Escalated queue, after the owner has
+    # already handled Phase 1 and Phase 2 themselves.
     if current_user.is_victoria:
-        phase2_pending_count = conn.execute(
-            f"SELECT COUNT(*) FROM notices WHERE status = 'PHASE2_SCOPED' AND {in_scope_where}",
-            tuple(in_scope_params),
-        ).fetchone()[0]
+        phase2_pending_count = 0
     else:
         phase2_pending_count = conn.execute(
             f"SELECT COUNT(*) FROM notices WHERE status = 'PHASE2_SCOPED' AND {in_scope_where} AND owner = ?",

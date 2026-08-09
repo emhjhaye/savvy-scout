@@ -49,17 +49,29 @@ def victoria_sourced_reject_sql(alias: str = "notices") -> str:
     )"""
 
 
+# Victoria only ever acts on a notice once it's ESCALATED_TO_VICTORIA --
+# Phase 1 ("To Review") and Phase 2 ("Awaiting AI Read" / "Ready for
+# Review") are owner-level stages she has no action on (2026-08-09,
+# explicit request). She still keeps the two stages downstream of her own
+# decision (Approved, Rejected/Parked).
+VICTORIA_STAGE_SLUGS = {"escalated", "approved", "rejected"}
+
+
 def get_sidebar_stage_counts(conn: sqlite3.Connection, owner: str, is_victoria: int) -> list[dict]:
-    """One count per Workflow Stages row: Victoria sees the whole pipeline,
-    every other owner sees only their own notices -- same owner-scoping rule
-    as the rest of the dashboard (queues, notifications). 2026-07-30: also
-    scoped to in_scope_filter_sql (real sector, CPV within that sector's
-    scope, UK1-4) for consistency with the Overview and Opportunities --
-    including the active queues, by explicit choice, accepting that a
-    text-only Gate 2 fail with an out-of-range CPV won't show here."""
+    """One count per Workflow Stages row: Victoria sees only the stages she
+    actually acts on (see VICTORIA_STAGE_SLUGS), every other owner sees
+    every stage but scoped to only their own notices -- same owner-scoping
+    rule as the rest of the dashboard (queues, notifications). 2026-07-30:
+    also scoped to in_scope_filter_sql (real sector, CPV within that
+    sector's scope, UK1-4) for consistency with the Overview and
+    Opportunities -- including the active queues, by explicit choice,
+    accepting that a text-only Gate 2 fail with an out-of-range CPV won't
+    show here."""
     in_scope_where, in_scope_params = in_scope_filter_sql(conn)
     counts = []
     for slug, css_class, label, statuses in STAGE_GROUPS:
+        if is_victoria and slug not in VICTORIA_STAGE_SLUGS:
+            continue
         placeholders = ",".join("?" for _ in statuses)
         extra_where = f" AND {victoria_sourced_reject_sql('notices')}" if slug == "rejected" else ""
         if is_victoria:
