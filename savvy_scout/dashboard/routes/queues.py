@@ -2,8 +2,9 @@
 manual "Victoria decision" mark and Victoria's own decision route."""
 
 import json
+import os
 
-from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
 from savvy_scout.dashboard.auth import get_db
@@ -203,7 +204,7 @@ def index():
                    n.indicative_value, n.deadline, n.uk_stage,
                    tr.headline_outcome, tr.headline_reason,
                    p.overall_rating, p.overall_reasoning,
-                   eb.trigger_reason, eb.emailed_at, eb.docx_path
+                   eb.id AS brief_id, eb.trigger_reason, eb.emailed_at, eb.docx_path
             FROM notices n
             LEFT JOIN triage_runs tr ON tr.id = (
                 SELECT MAX(id) FROM triage_runs WHERE notice_id = n.id
@@ -567,6 +568,36 @@ def victoria_decision(notice_id):
     except ValueError as exc:
         flash(str(exc), "error")
     return redirect(url_for("queues.index"))
+
+
+@queues_bp.route("/notices/<int:notice_id>/brief/<int:brief_id>")
+@login_required
+def view_brief(notice_id, brief_id):
+    """Opens the generated PDF (Internal Addendum pre-decision, Capture
+    Brief post-GO) directly in the browser -- 2026-08-09, previously the
+    only way to see either was emailing it via Graph, and Graph isn't
+    configured in every environment."""
+    conn = get_db()
+    notice = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,)).fetchone()
+    if not notice:
+        abort(404)
+    if not current_user.is_victoria and notice["owner"] != current_user.display_name:
+        flash("Only the owning sector lead or Victoria can view this document.", "error")
+        return redirect(url_for("queues.index"))
+
+    brief = conn.execute(
+        "SELECT * FROM escalation_briefs WHERE id = ? AND notice_id = ?", (brief_id, notice_id)
+    ).fetchone()
+    if not brief or not os.path.exists(brief["docx_path"]):
+        flash("Document not found -- it may not have been generated yet.", "error")
+        return redirect(url_for("queues.notice_detail", notice_id=notice_id))
+
+    label = brief["brief_type"].replace("_", " ").title()
+    safe_ref = notice["ref"].replace("/", "-")
+    return send_file(
+        brief["docx_path"], mimetype="application/pdf",
+        as_attachment=False, download_name=f"{label} - {safe_ref}.pdf",
+    )
 
 
 @queues_bp.route("/notices/<int:notice_id>/send-escalation-email", methods=["POST"])

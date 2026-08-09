@@ -1,4 +1,4 @@
-from docx import Document
+from pypdf import PdfReader
 
 from savvy_scout.escalation.brief import build_brief, record_brief
 from savvy_scout.models.notice import Notice
@@ -8,17 +8,18 @@ from savvy_scout.triage.gates import triage_notice
 from savvy_scout.triage.scope_read import save_scope_read
 
 SECTION_TITLES = [
-    "Opportunity summary",
-    "Buyer",
-    "Value",
-    "Route to market",
-    "Gate outcomes",
-    "Provisional ratings with reasoning",
-    "Competitor picture",
-    "Risks",
-    "Open questions",
-    "Decision requested",
+    "TRIAGE GATE SUMMARY",
+    "SCOUTING ASSESSMENT",
+    "CAPABILITY FIT",
+    "OPEN BLOCKERS AND RISKS",
+    "OPEN QUESTIONS FOR VICTORIA",
+    "DECISION REQUESTED FROM VICTORIA",
 ]
+
+
+def _pdf_text(path: str) -> str:
+    reader = PdfReader(path)
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
 def _make_notice(conn):
@@ -32,6 +33,7 @@ def _make_notice(conn):
         notice_type="UK3",
         uk_stage="UK3",
         raw_json="{}",
+        notice_url="https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1",
     )
     parsed = ParsedNotice(
         notice=notice,
@@ -44,20 +46,25 @@ def _make_notice(conn):
     return notice_id
 
 
-def test_build_brief_has_all_ten_sections_and_warning(conn, tmp_path):
+def test_build_brief_has_all_sections_and_warning(conn, tmp_path):
     notice_id = _make_notice(conn)
     output_dir = tmp_path / "briefs"
     path = build_brief(conn, notice_id, output_dir=str(output_dir))
 
-    doc = Document(path)
-    full_text = "\n".join(p.text for p in doc.paragraphs)
+    assert path.endswith(".pdf")
+    full_text = _pdf_text(path)
 
+    assert "INTERNAL ADDENDUM" in full_text
+    assert "NOT FOR CLIENT DISTRIBUTION" in full_text
     assert "AUTO-GENERATED PROVISIONAL DRAFT FOR VALIDATION" in full_text
-    assert "INTERNAL ADDENDUM: Ambiguous Sector Notice For Brief Test" in full_text
+    assert "Ambiguous Sector Notice For Brief Test" in full_text
     for title in SECTION_TITLES:
         assert title in full_text, f"missing section: {title}"
 
-    # Gate 1's FLAG reason should show up in both the gate outcomes and risks sections
+    # The notice link must never be dropped from the Scouting Assessment section.
+    assert "https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1" in full_text
+
+    # Gate 1's FLAG reason should show up in both the gate summary and risks sections.
     assert "escalate to Victoria" in full_text
 
 
@@ -75,8 +82,7 @@ def test_build_brief_includes_provisional_label_when_assessment_exists(conn, tmp
         },
     )
     path = build_brief(conn, notice_id, output_dir=str(tmp_path / "briefs"))
-    doc = Document(path)
-    full_text = "\n".join(p.text for p in doc.paragraphs)
+    full_text = _pdf_text(path)
 
     assert "PROVISIONAL, FOR VALIDATION" in full_text
     assert "Is this really out of sector?" in full_text

@@ -323,7 +323,10 @@
         </div>
         {% endif %}
         {% if n['docx_path'] %}
-        <div style="margin-top: 6px; font-size: 11px; color: var(--success);">✓ Internal Addendum ready</div>
+        <div style="margin-top: 6px;">
+          <a href="{{ url_for('queues.view_brief', notice_id=n['id'], brief_id=n['brief_id']) }}" target="_blank"
+             style="font-size: 11px; color: var(--info); font-weight: 700; text-decoration: none;">📄 View Internal Addendum</a>
+        </div>
         {% endif %}
       </div>
       <div class="notice-right">

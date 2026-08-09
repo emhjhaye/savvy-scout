@@ -15,7 +15,9 @@ def app(tmp_path):
     setup_conn = get_connection(db_path)
     init_db(setup_conn)
     seed_all(setup_conn)
-    for username, display_name in [("victoria", "Victoria"), ("kanvesh", "Kanvesh"), ("mark", "Mark")]:
+    for username, display_name in [
+        ("victoria", "Victoria"), ("kanvesh", "Kanvesh"), ("mark", "Mark"), ("hammad", "Hammad"),
+    ]:
         setup_conn.execute(
             "INSERT INTO users (username, password_hash, display_name, is_victoria, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -66,9 +68,23 @@ def mark_client(app):
     return _logged_in_client(app, "mark")
 
 
-def test_admin_index_requires_correction_authority(mark_client):
-    resp = mark_client.get("/admin/", follow_redirects=True)
+@pytest.fixture
+def hammad_client(app):
+    return _logged_in_client(app, "hammad")
+
+
+def test_admin_index_requires_correction_authority(hammad_client):
+    resp = hammad_client.get("/admin/", follow_redirects=True)
     assert b"Only Victoria, Kanvesh or the admin account" in resp.data
+
+
+def test_admin_index_allows_mark_correction_authority(mark_client):
+    """2026-08-09: Mark was granted the same rule-correction authority as
+    Victoria/Kanvesh (explicit request), on top of his existing is_admin
+    account-management authority -- distinct from is_admin, which only
+    gates Manage Users."""
+    resp = mark_client.get("/admin/")
+    assert b"config_sector_keywords" in resp.data
 
 
 def test_admin_index_shows_sector_keywords_table(victoria_client):
@@ -127,8 +143,8 @@ def test_add_row_rejects_missing_required_field(victoria_client, app):
     assert row is None
 
 
-def test_add_row_denied_for_non_correction_authority(mark_client, app):
-    mark_client.post(
+def test_add_row_denied_for_non_correction_authority(hammad_client, app):
+    hammad_client.post(
         "/admin/config/config_sector_keywords/add",
         data={"sector": "Fintech", "keyword": "Monzo", "reason": "test"},
         follow_redirects=True,
@@ -205,13 +221,13 @@ def test_delete_row_requires_reason(victoria_client, app):
     assert still_there is not None
 
 
-def test_delete_row_denied_for_non_correction_authority(mark_client, app):
+def test_delete_row_denied_for_non_correction_authority(hammad_client, app):
     conn = _db(app)
     row = conn.execute(
         "SELECT * FROM config_sector_keywords WHERE sector = 'Fintech'"
     ).fetchone()
 
-    mark_client.post(
+    hammad_client.post(
         f"/admin/config/config_sector_keywords/{row['id']}/delete",
         data={"reason": "test"},
         follow_redirects=True,

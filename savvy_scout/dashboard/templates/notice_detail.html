@@ -159,6 +159,11 @@
         <input type="text" name="reason" placeholder="Reason (optional)" style="width: 220px; padding: 7px 10px; font-size: 13px;">
         <button type="submit" class="btn btn-approve">Submit Decision</button>
       </form>
+      {% if escalation_brief %}
+        <a href="{{ url_for('queues.view_brief', notice_id=notice['id'], brief_id=escalation_brief['id']) }}" target="_blank" class="btn btn-secondary">
+          📄 View {{ escalation_brief['brief_type'] | replace('_', ' ') | title }}
+        </a>
+      {% endif %}
       {% if escalation_brief and not escalation_brief['emailed_at'] %}
         <form method="post" action="{{ url_for('queues.send_escalation_email', notice_id=notice['id']) }}" style="display:inline">
           <button type="submit" class="btn btn-secondary">📧 Send Brief Email</button>

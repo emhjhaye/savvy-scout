@@ -50,7 +50,7 @@ AUTO_MANAGED_COLUMNS = {"id", "updated_at", "updated_by", "created_at"}
 
 
 def _has_correction_authority() -> bool:
-    return current_user.display_name in ("Victoria", "Kanvesh")
+    return current_user.display_name in ("Victoria", "Kanvesh", "Mark")
 
 
 def _is_super_admin() -> bool:
@@ -160,7 +160,7 @@ def index():
 @login_required
 def update_row(table_name, row_id):
     if not _has_correction_authority():
-        flash("Only Victoria and Kanvesh can make rule corrections.", "error")
+        flash("Only Victoria, Kanvesh or Mark can make rule corrections.", "error")
         return redirect(url_for("queues.index"))
     if table_name not in EDITABLE_TABLES:
         flash("Unknown config table.", "error")
@@ -362,7 +362,7 @@ def assign_owner(row_id):
 @login_required
 def add_row(table_name):
     if not _has_correction_authority():
-        flash("Only Victoria and Kanvesh can make rule corrections.", "error")
+        flash("Only Victoria, Kanvesh or Mark can make rule corrections.", "error")
         return redirect(url_for("queues.index"))
     if table_name not in EDITABLE_TABLES:
         flash("Unknown config table.", "error")
@@ -419,7 +419,7 @@ def add_row(table_name):
 @login_required
 def delete_row(table_name, row_id):
     if not _has_correction_authority():
-        flash("Only Victoria and Kanvesh can make rule corrections.", "error")
+        flash("Only Victoria, Kanvesh or Mark can make rule corrections.", "error")
         return redirect(url_for("queues.index"))
     if table_name not in EDITABLE_TABLES:
         flash("Unknown config table.", "error")
