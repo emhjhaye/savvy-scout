@@ -369,6 +369,7 @@ def parse_release(release: dict, source: str) -> ParsedNotice:
         procurement_method=tender.get("procurementMethod"),
         procurement_method_details=tender.get("procurementMethodDetails"),
         notice_url=_find_notice_url(release),
+        published_at=release.get("date"),
         **additional_fields,
     )
 

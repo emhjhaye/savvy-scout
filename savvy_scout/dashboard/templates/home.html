@@ -35,9 +35,15 @@
   .panel-title { font-size: 12.5px; font-weight: 800; color: var(--navy); }
   .panel-subtitle { margin-top: 1px; font-size: 10.5px; color: var(--text-muted); }
 
-  /* Sector performance table: rows = sector (+ TOTAL), columns = time windows.
-     Only in-scope notices count here (real sector, UK1-4, CPV within that
-     sector's config_sector_cpv_scope) -- see home.py's _in_scope_filter_sql. */
+  /* Sector performance table: rows = sector, then "In Sector (total)" and
+     "Total Swept (all sources)", columns = Mon-Fri this week + rolling
+     windows, dated by each notice's publication date (not sweep date) --
+     see home.py's _build_sector_performance. Per-sector rows and "In Sector
+     (total)" only count notices matching in_scope_filter_sql's rule (real
+     sector, UK1-4, CPV within that sector's config_sector_cpv_scope);
+     "Total Swept" is every notice pulled regardless of sector match, so
+     comparing the two rows shows how much of the raw sweep actually lands
+     in-scope. */
   .perf-table { width: 100%; border-collapse: collapse; font-size: 11px; }
   .perf-table th { text-align: right; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted); padding: 3px 5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   .perf-table th:first-child, .perf-table td:first-child { text-align: left; }
@@ -46,6 +52,7 @@
   .perf-table .sector-cell { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
   .perf-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .perf-table tr.total-row td { font-weight: 800; border-top: 2px solid var(--border); background: var(--surface-alt); }
+  .perf-table tr.grand-total-row td { color: var(--text-muted); }
 
   /* Donut + legend language, reused for Sector mix and Triage outcomes. */
   .donut-wrap { display: flex; align-items: center; gap: 12px; }
@@ -113,28 +120,33 @@
       <div class="panel">
         <div class="panel-head">
           <div class="panel-title">Sector performance</div>
-          <div class="panel-subtitle">Notices scouted per sector, by time window</div>
+          <div class="panel-subtitle">Opportunities by publication date &mdash; Mon&ndash;Fri this week, then rolling totals</div>
         </div>
+        <div style="overflow-x: auto;">
         <table class="perf-table">
           <thead>
             <tr>
               <th>Sector</th>
-              <th>Today</th>
+              {% for day in sector_performance.day_headers %}
+              <th title="{{ day.date }}">{{ day.label }}</th>
+              {% endfor %}
               <th>This week</th>
               <th>This month</th>
               <th>YTD</th>
             </tr>
           </thead>
           <tbody>
-            {% for row in scouting_report.sector_time_rows %}
-            <tr class="{% if row.sector == 'TOTAL' %}total-row{% endif %}">
+            {% for row in sector_performance.rows %}
+            <tr class="{% if row.get('is_total') %}total-row{% endif %}{% if row.get('is_grand_total') %} grand-total-row{% endif %}">
               <td>
                 <span class="sector-cell">
-                  {% if row.sector != 'TOTAL' %}<span class="perf-swatch" style="background: {{ sector_palette[loop.index0 % sector_palette|length] }};"></span>{% endif %}
+                  {% if not row.get('is_total') %}<span class="perf-swatch" style="background: {{ sector_palette[loop.index0 % sector_palette|length] }};"></span>{% endif %}
                   {{ row.sector }}
                 </span>
               </td>
-              <td>{{ row.today }}</td>
+              {% for count in row.days %}
+              <td>{{ count }}</td>
+              {% endfor %}
               <td>{{ row.week }}</td>
               <td>{{ row.month }}</td>
               <td>{{ row.ytd }}</td>
@@ -142,6 +154,7 @@
             {% endfor %}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div class="panel">

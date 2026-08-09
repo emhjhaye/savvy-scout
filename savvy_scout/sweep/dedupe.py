@@ -84,7 +84,7 @@ def _insert_notice(conn, notice, parsed, cpv_additional_json, lot_statuses_json,
         "buyer_contact_email, buyer_region, procurement_method, procurement_method_details, notice_url, "
         f"{', '.join(additional_cols)}, "
         "text_blob, tender_status, lot_statuses, tender_period_end, pme_due_date, "
-        "future_notice_date, contract_end_date, is_award, raw_json, "
+        "future_notice_date, contract_end_date, is_award, raw_json, published_at, "
         "first_seen_at, last_swept_at, created_at, updated_at"
     )
     num_columns = len(columns.split(","))
@@ -123,6 +123,7 @@ def _insert_notice(conn, notice, parsed, cpv_additional_json, lot_statuses_json,
             parsed.contract_end_date,
             int(parsed.is_award),
             notice.raw_json,
+            notice.published_at,
             now,
             now,
             now,
@@ -174,7 +175,7 @@ def upsert_notice(conn: sqlite3.Connection, parsed: ParsedNotice, actor: str = "
         f"{', '.join(f'{c} = ?' for c in additional_cols)}, "
         "text_blob = ?, tender_status = ?, lot_statuses = ?, "
         "tender_period_end = ?, pme_due_date = ?, future_notice_date = ?, contract_end_date = ?, "
-        "is_award = ?, raw_json = ?, last_swept_at = ?, updated_at = ? "
+        "is_award = ?, raw_json = ?, published_at = ?, last_swept_at = ?, updated_at = ? "
         "WHERE id = ?",
         (
             notice.ocid,
@@ -206,6 +207,7 @@ def upsert_notice(conn: sqlite3.Connection, parsed: ParsedNotice, actor: str = "
             parsed.contract_end_date,
             int(parsed.is_award),
             notice.raw_json,
+            notice.published_at,
             now,
             now,
             notice_id,

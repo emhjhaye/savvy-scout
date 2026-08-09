@@ -122,6 +122,27 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     if "teams_webhook_url" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN teams_webhook_url TEXT")
 
+    # published_at (2026-08-09): the OCDS release's own publish timestamp,
+    # for date-based reporting (Sector Performance) that reflects real
+    # publication activity instead of our sweep cadence -- see
+    # models.notice.Notice.published_at. Backfilled from each notice's
+    # already-stored raw_json, same pattern as the other backfills above.
+    if "published_at" not in notice_cols:
+        import json as _json
+
+        conn.execute("ALTER TABLE notices ADD COLUMN published_at TEXT")
+        rows_missing_published = conn.execute(
+            "SELECT id, raw_json FROM notices WHERE raw_json IS NOT NULL AND raw_json != ''"
+        ).fetchall()
+        for row in rows_missing_published:
+            try:
+                release = _json.loads(row["raw_json"])
+            except ValueError:
+                continue
+            published_at = release.get("date")
+            if published_at:
+                conn.execute("UPDATE notices SET published_at = ? WHERE id = ?", (published_at, row["id"]))
+
     if missing_additional_cols:
         import json as _json
 

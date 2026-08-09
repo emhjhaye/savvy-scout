@@ -161,8 +161,9 @@ def test_overview_shows_scouting_report(tmp_path):
     # inflate "Total scouted" -- proven by expected_* above only counting
     # the 5 in-scope `notices`, not the 3 extra out-of-scope ones inserted.
     # No-sector notices no longer get their own "UNVERIFIED" row at all: 5
-    # real sectors + 1 TOTAL row, not a 7th UNVERIFIED row.
-    assert html.count('class="sector-cell"') == 6
+    # real sectors + "In Sector (total)" + "Total Swept (all sources)"
+    # (2026-08-09: Sector Performance now shows both totals, not just one).
+    assert html.count('class="sector-cell"') == 7
     assert "Seen today" in html
     assert "Seen yesterday" in html
     assert "Swept today" in html

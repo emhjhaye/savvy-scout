@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS notices (
     contract_end_date TEXT,
     is_award INTEGER NOT NULL DEFAULT 0,
     raw_json TEXT NOT NULL,
+    published_at TEXT,
     first_seen_at TEXT NOT NULL,
     last_swept_at TEXT NOT NULL,
     created_at TEXT NOT NULL,

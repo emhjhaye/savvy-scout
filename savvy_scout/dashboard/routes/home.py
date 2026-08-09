@@ -13,6 +13,7 @@ matches what actually reaches an owner (everything else auto-rejects or
 FLAGs as an open question, see triage.gates/workflow.approvals), so the
 Overview reads as "what we're actually pursuing," not raw sweep volume."""
 
+import json
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -20,10 +21,13 @@ from flask import Blueprint, current_app, flash, redirect, render_template, url_
 from flask_login import current_user, login_required
 
 from savvy_scout.dashboard.auth import get_db
-from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
+from savvy_scout.dashboard.scope_filter import IN_SCOPE_UK_STAGES, in_scope_filter_sql
 from savvy_scout.sweep.runner import run_sweep
 
 home_bp = Blueprint("home", __name__)
+
+LONDON = ZoneInfo("Europe/London")
+WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
 # Shared colour language for the Overview page's pie/donut charts -- the
 # same colours are used for the legend swatches and the CSS conic-gradient
@@ -61,11 +65,138 @@ def _pretty_datetime(value: datetime) -> str:
     return value.strftime("%d %b %Y, %I:%M %p %Z")
 
 
+def _to_london_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(LONDON)
+
+
+def _report_date(row):
+    """The date a notice counts under for Sector Performance: its real
+    publication date (published_at, from the OCDS release's own "date"
+    field) if we have it, else first_seen_at as a fallback for the rare
+    notice a source published without a usable date. Never first_seen_at by
+    default -- that's when OUR sweep found it, not when the buyer actually
+    published it, and would make every notice from before this app existed
+    look like it was all published on the one day we started sweeping."""
+    dt = _to_london_datetime(row["published_at"]) or _to_london_datetime(row["first_seen_at"])
+    return dt.date() if dt else None
+
+
+def _build_scope_predicate(conn):
+    """Same "in scope" rule as scope_filter.in_scope_filter_sql (sector set,
+    UK1-4 stage, within that sector's configured CPV scope), just as a
+    Python predicate -- Sector Performance buckets by calendar day in
+    Europe/London from a stored ISO timestamp with a mix of offsets, which
+    isn't reliable to do in raw SQL, so the whole report is built in Python
+    from one bulk fetch instead of one query per cell."""
+    rows = conn.execute(
+        "SELECT sector, allowed_cpv_prefixes FROM config_sector_cpv_scope WHERE enabled = 1"
+    ).fetchall()
+    if not rows:
+        def predicate(sector, cpv_primary, uk_stage):
+            return sector is not None and uk_stage in IN_SCOPE_UK_STAGES
+        return predicate
+
+    scope_map = {row["sector"]: json.loads(row["allowed_cpv_prefixes"]) for row in rows}
+
+    def predicate(sector, cpv_primary, uk_stage):
+        if uk_stage not in IN_SCOPE_UK_STAGES:
+            return False
+        prefixes = scope_map.get(sector)
+        if prefixes is None:
+            return False
+        return bool(cpv_primary) and any(cpv_primary.startswith(p) for p in prefixes)
+
+    return predicate
+
+
+def _new_perf_bucket(weekdays):
+    return {"days": {d: 0 for d in weekdays}, "week": 0, "month": 0, "ytd": 0}
+
+
+def _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start):
+    if report_date in bucket["days"]:
+        bucket["days"][report_date] += 1
+    if week_start <= report_date <= week_end:
+        bucket["week"] += 1
+    if report_date >= month_start:
+        bucket["month"] += 1
+    if report_date >= year_start:
+        bucket["ytd"] += 1
+
+
+def _perf_row(label, bucket, weekdays, **extra):
+    return {
+        "sector": label,
+        "days": [bucket["days"][d] for d in weekdays],
+        "week": bucket["week"],
+        "month": bucket["month"],
+        "ytd": bucket["ytd"],
+        **extra,
+    }
+
+
+def _build_sector_performance(conn, now_uk: datetime) -> dict:
+    """Sector Performance (2026-08-09): per-sector opportunity counts for
+    Mon-Fri of the CURRENT week, then This Week/This Month/YTD, dated by
+    publication date (not sweep date). Two grand-total rows are appended:
+    "In Sector" (sum of the per-sector rows above, i.e. what in_scope_filter_sql
+    also counts) and "Total Swept" (every notice pulled, matched to a sector
+    or not) -- comparing the two shows how much of the raw sweep volume
+    actually lands in-scope."""
+    today = now_uk.date()
+    week_start = today - timedelta(days=now_uk.weekday())
+    week_end = week_start + timedelta(days=6)
+    weekdays = [week_start + timedelta(days=i) for i in range(5)]
+    month_start = today.replace(day=1)
+    year_start = today.replace(month=1, day=1)
+
+    predicate = _build_scope_predicate(conn)
+    rows = conn.execute("SELECT sector, cpv_primary, uk_stage, published_at, first_seen_at FROM notices").fetchall()
+
+    sector_buckets: dict[str, dict] = {}
+    in_scope_total = _new_perf_bucket(weekdays)
+    swept_total = _new_perf_bucket(weekdays)
+
+    for row in rows:
+        report_date = _report_date(row)
+        if report_date is None:
+            continue
+        _accumulate_perf(swept_total, report_date, weekdays, week_start, week_end, month_start, year_start)
+
+        if predicate(row["sector"], row["cpv_primary"], row["uk_stage"]):
+            _accumulate_perf(in_scope_total, report_date, weekdays, week_start, week_end, month_start, year_start)
+            bucket = sector_buckets.setdefault(row["sector"], _new_perf_bucket(weekdays))
+            _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start)
+
+    perf_rows = [
+        _perf_row(sector, bucket, weekdays)
+        for sector, bucket in sorted(sector_buckets.items(), key=lambda kv: kv[1]["ytd"], reverse=True)
+    ]
+    perf_rows.append(_perf_row("In Sector (total)", in_scope_total, weekdays, is_total=True))
+    perf_rows.append(_perf_row("Total Swept (all sources)", swept_total, weekdays, is_total=True, is_grand_total=True))
+
+    return {
+        "rows": perf_rows,
+        "day_headers": [
+            {"label": label, "date": _pretty_date(d)} for label, d in zip(WEEKDAY_LABELS, weekdays)
+        ],
+    }
+
+
 @home_bp.route("/")
 @login_required
 def index():
     conn = get_db()
     now = datetime.now(timezone.utc)
+    uk_now = now.astimezone(LONDON)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
     tomorrow_start = today_start + timedelta(days=1)
@@ -125,7 +256,6 @@ def index():
     sweep_last_run = None
     sweep_next_run = None
     try:
-        uk_now = now.astimezone(ZoneInfo("Europe/London"))
         next_uk_run = uk_now.replace(hour=8, minute=0, second=0, microsecond=0)
         if uk_now >= next_uk_run:
             next_uk_run += timedelta(days=1)
@@ -137,7 +267,7 @@ def index():
     if last_swept_at:
         try:
             last_swept_dt = datetime.fromisoformat(last_swept_at)
-            sweep_last_run = _pretty_datetime(last_swept_dt.astimezone(ZoneInfo("Europe/London")))
+            sweep_last_run = _pretty_datetime(last_swept_dt.astimezone(LONDON))
         except Exception:
             sweep_last_run = last_swept_at
 
@@ -163,46 +293,12 @@ def index():
         [(SECTOR_PALETTE[i % len(SECTOR_PALETTE)], row["share"]) for i, row in enumerate(sector_split)]
     )
 
-    # One row per sector (+ UNVERIFIED), each broken down by scouting window,
-    # so "how are we doing per sector" and "how are we doing over time" are
-    # answered by a single table instead of two disconnected panels.
-    sector_time_query_rows = conn.execute(
-        f"""
-        SELECT sector,
-               SUM(CASE WHEN first_seen_at >= ? THEN 1 ELSE 0 END) AS today_cnt,
-               SUM(CASE WHEN first_seen_at >= ? THEN 1 ELSE 0 END) AS week_cnt,
-               SUM(CASE WHEN first_seen_at >= ? THEN 1 ELSE 0 END) AS month_cnt,
-               SUM(CASE WHEN first_seen_at >= ? THEN 1 ELSE 0 END) AS ytd_cnt,
-               COUNT(*) AS total_cnt
-        FROM notices
-        WHERE {in_scope_where}
-        GROUP BY sector
-        ORDER BY total_cnt DESC, sector ASC
-        """,
-        (
-            today_start.isoformat(), week_start.isoformat(), month_start.isoformat(), year_start.isoformat(),
-            *in_scope_params,
-        ),
-    ).fetchall()
-    sector_time_rows = [
-        {
-            "sector": row["sector"],
-            "today": row["today_cnt"],
-            "week": row["week_cnt"],
-            "month": row["month_cnt"],
-            "ytd": row["ytd_cnt"],
-        }
-        for row in sector_time_query_rows
-    ]
-    sector_time_rows.append(
-        {
-            "sector": "TOTAL",
-            "today": scouting_today,
-            "week": scouting_week,
-            "month": scouting_month,
-            "ytd": scouting_ytd,
-        }
-    )
+    # Sector Performance (2026-08-09): dated by publication date, not sweep
+    # date -- see _build_sector_performance. Built once here rather than as
+    # several more SQL queries, since bucketing by Europe/London calendar day
+    # from a stored ISO timestamp with mixed UTC offsets isn't reliable to do
+    # in raw SQL.
+    sector_performance = _build_sector_performance(conn, uk_now)
 
     latest_triage_rows = conn.execute(
         f"""
@@ -252,7 +348,6 @@ def index():
             "today_updated": updated_today,
         },
         "sector_split": sector_split,
-        "sector_time_rows": sector_time_rows,
         "sector_pie_gradient": sector_pie_gradient,
         "triage_outcomes": triage_outcomes,
         "triage_pie_gradient": triage_pie_gradient,
@@ -261,6 +356,7 @@ def index():
     return render_template(
         "home.html",
         scouting_report=scouting_report,
+        sector_performance=sector_performance,
         sweep_note={"last_run": sweep_last_run, "next_run": sweep_next_run},
         sector_palette=SECTOR_PALETTE,
         triage_colors=TRIAGE_COLORS,

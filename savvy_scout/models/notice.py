@@ -162,3 +162,9 @@ class Notice:
     buyer_org_type: str | None = None
     conflicts_assessment: str | None = None
     bid_documents_json: str | None = None
+    # The OCDS release's own publish timestamp (release["date"]) -- when the
+    # buyer/portal actually published this notice, distinct from
+    # notices.first_seen_at (when OUR sweep first pulled it in). Needed
+    # (2026-08-09) for date-based reporting ("opportunities per day") that
+    # reflects real publication activity, not our sweep cadence.
+    published_at: str | None = None
