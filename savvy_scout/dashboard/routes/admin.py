@@ -639,6 +639,44 @@ def reset_user_password(user_id):
     return redirect(url_for("admin.users_index"))
 
 
+@admin_bp.route("/users/<int:user_id>/send-invite", methods=["POST"])
+@login_required
+def send_invite(user_id):
+    """One-click resend of the app-link email (2026-08-09) -- no password
+    change, unlike Reset Password. Previously the only way to (re)send the
+    link was the empty-to-set email transition firing once automatically;
+    this covers "the email never arrived, just send it again" without
+    forcing a new temporary password on someone who already knows their own."""
+    if not _is_super_admin():
+        flash("Only the admin account can manage users.", "error")
+        return redirect(url_for("queues.index"))
+
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if row is None:
+        flash("User not found.", "error")
+        return redirect(url_for("admin.users_index"))
+    if not row["email"]:
+        flash(f"{row['display_name']} has no email on file yet -- set one first.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    app_url = _app_url()
+    try:
+        send_account_link_email(row["email"], row["display_name"], app_url)
+        message = f"Invite email resent to {row['display_name']} at {row['email']}."
+        category = "success"
+    except NotificationError as exc:
+        message = (
+            f"Couldn't send the invite email ({exc}). Share this manually -- link: {app_url}, "
+            f"email: {row['email']}."
+        )
+        category = "error"
+    log_audit(conn, "user", row["email"], "invite_resent", current_user.display_name, f"Resent invite to {row['display_name']}")
+
+    flash(message, category)
+    return redirect(url_for("admin.users_index"))
+
+
 @admin_bp.route("/users/<int:user_id>/delete", methods=["POST"])
 @login_required
 def delete_user(user_id):
