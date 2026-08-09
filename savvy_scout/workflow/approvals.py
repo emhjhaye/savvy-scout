@@ -14,14 +14,19 @@ not Phase 1 flagged it. retriage_and_route below is the one exception: a
 config correction can still escalate a re-triaged notice directly, since
 that notice was never routed through Phase 2 in the first place."""
 
+import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 
 from savvy_scout.escalation.brief import DEFAULT_BRIEFS_DIR, build_capture_brief, build_internal_addendum, record_brief
 from savvy_scout.logging_util import log_audit, log_status_change
 from savvy_scout.models.notice import Status, validate_transition
+from savvy_scout.notifications import NotificationError, send_victoria_escalation_email
 from savvy_scout.triage.gates import _sector_cpv_scope, retriage_notice
 from savvy_scout.triage.scope_read import run_scope_read, save_scope_read
+
+logger = logging.getLogger(__name__)
 
 
 class NotAuthorized(PermissionError):
@@ -101,15 +106,47 @@ def escalate_to_victoria(
     trigger_reason: str,
     briefs_dir: str = DEFAULT_BRIEFS_DIR,
 ) -> str:
-    """Moves a notice to ESCALATED_TO_VICTORIA and generates the Internal
-    Addendum (v1.5). Emailing remains owner-mediated and separate."""
+    """Moves a notice to ESCALATED_TO_VICTORIA, generates the Internal
+    Addendum (v1.5), and emails Victoria directly (2026-08-09) -- previously
+    the only notification route was the manual "Send Brief Email" button,
+    which needs Microsoft Graph configured (it isn't in every environment).
+    This SMTP-based email is best-effort: a missing Victoria email or a down
+    SMTP server must not stop the escalation itself from completing."""
     notice_row = _get_notice(conn, notice_id)
     _transition(conn, notice_row, Status.ESCALATED_TO_VICTORIA, actor, trigger_reason)
 
     docx_path = build_internal_addendum(conn, notice_id, output_dir=briefs_dir)
     record_brief(conn, notice_id, trigger_reason, docx_path, actor, brief_type="INTERNAL_ADDENDUM")
     log_audit(conn, "notice", str(notice_id), "escalation_brief_generated", actor, trigger_reason)
+
+    _notify_victoria_of_escalation(conn, notice_id, trigger_reason)
     return docx_path
+
+
+def _notify_victoria_of_escalation(conn: sqlite3.Connection, notice_id: int, trigger_reason: str) -> None:
+    victoria = conn.execute("SELECT email FROM users WHERE is_victoria = 1 LIMIT 1").fetchone()
+    if not victoria or not victoria["email"]:
+        logger.debug("No email on file for Victoria; skipping escalation email for notice %s.", notice_id)
+        return
+
+    notice = _get_notice(conn, notice_id)
+    assessment = conn.execute(
+        "SELECT overall_rating, overall_reasoning FROM phase2_assessments WHERE notice_id = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (notice_id,),
+    ).fetchone()
+    app_url = (os.environ.get("SAVVY_SCOUT_APP_BASE_URL") or "").rstrip("/")
+
+    try:
+        send_victoria_escalation_email(
+            victoria["email"], notice_id, notice["ref"], notice["title"], notice["buyer"],
+            notice["sector"], notice["owner"], notice["indicative_value"], notice["deadline"],
+            assessment["overall_rating"] if assessment else None,
+            assessment["overall_reasoning"] if assessment else None,
+            trigger_reason, app_url,
+        )
+    except NotificationError as exc:
+        logger.warning("Could not send Victoria escalation email for notice %s: %s", notice_id, exc)
 
 
 def approve_phase1(

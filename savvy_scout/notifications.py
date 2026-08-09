@@ -9,11 +9,42 @@ from __future__ import annotations
 
 import os
 import smtplib
+from datetime import datetime, timezone
 from email.message import EmailMessage
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Shown as the sender's display name in the recipient's mail client instead
+# of the raw SMTP mailbox address (2026-08-09) -- Outlook was showing
+# "emhjhaye22@gmail.com" as the sender, which reads as a random personal
+# account rather than the app.
+SENDER_DISPLAY_NAME = "Savvy Scout"
+
+URGENT_DAYS = 3
+APPROACHING_DAYS = 7
+
+
+def _deadline_urgency(deadline: str | None) -> str | None:
+    """A short urgency label for a deadline, or None if it's not close (or
+    unknown/already passed -- nothing useful to flag either way)."""
+    if not deadline:
+        return None
+    try:
+        dt = datetime.fromisoformat(deadline)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    days_left = (dt - datetime.now(timezone.utc)).days
+    if days_left < 0:
+        return None
+    if days_left <= URGENT_DAYS:
+        return f"🔴 URGENT -- {days_left} day(s) left"
+    if days_left <= APPROACHING_DAYS:
+        return f"🟡 Approaching -- {days_left} day(s) left"
+    return None
 
 
 class NotificationError(RuntimeError):
@@ -41,7 +72,7 @@ def send_email(to_address: str, subject: str, body: str) -> None:
 
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = sender
+    message["From"] = f"{SENDER_DISPLAY_NAME} <{sender}>"
     message["To"] = to_address
     message.set_content(body)
 
@@ -95,16 +126,65 @@ def send_new_opportunity_email(
     assigned to them (2026-08-09), so an opportunity doesn't just sit
     unnoticed in the in-app "needs attention" badge until they next open the
     dashboard."""
-    body = (
-        f"Hi {display_name},\n\n"
-        f"A new opportunity has been assigned to you on Savvy Scout:\n\n"
-        f"  {title}\n"
-        f"  Buyer: {buyer or 'Unknown'}\n"
-        f"  Reference: {ref}\n"
-        f"  Deadline: {deadline or 'Not stated'}\n\n"
-        f"View it here: {app_url}/notices/{notice_id}\n"
-    )
-    send_email(to_address, f"New opportunity: {title}", body)
+    urgency = _deadline_urgency(deadline)
+    subject = f"New opportunity: {title}"
+    if urgency:
+        subject = f"[{urgency.split(' -- ')[0]}] {subject}"
+    lines = [
+        f"Hi {display_name},",
+        "",
+        "A new opportunity has been assigned to you on Savvy Scout:",
+        "",
+        f"  {title}",
+        f"  Buyer: {buyer or 'Unknown'}",
+        f"  Reference: {ref}",
+        f"  Deadline: {deadline or 'Not stated'}",
+    ]
+    if urgency:
+        lines.append(f"  {urgency}")
+    lines.extend(["", f"View it here: {app_url}/notices/{notice_id}" if app_url else f"View it here: /notices/{notice_id}"])
+    send_email(to_address, subject, "\n".join(lines))
+
+
+def send_victoria_escalation_email(
+    to_address: str, notice_id: int, ref: str, title: str, buyer: str | None,
+    sector: str | None, owner: str | None, indicative_value: str | None, deadline: str | None,
+    overall_rating: str | None, overall_reasoning: str | None, trigger_reason: str, app_url: str,
+) -> None:
+    """Sent the moment a notice reaches ESCALATED_TO_VICTORIA (2026-08-09) --
+    previously the only route to notify Victoria was the manual "Send Brief
+    Email" button, which needs Microsoft Graph configured (it isn't). Full
+    detail here so Victoria can make a go/no-go call from the email alone if
+    needed, with an urgency flag since escalations near their deadline need
+    a faster decision than ones with weeks to spare."""
+    urgency = _deadline_urgency(deadline)
+    subject = f"Escalation for your decision: {title}"
+    if urgency:
+        subject = f"[{urgency.split(' -- ')[0]}] {subject}"
+    lines = [
+        "Hi Victoria,",
+        "",
+        "A notice has been escalated to you for a go/no-go/park decision:",
+        "",
+        f"  {title}",
+        f"  Buyer: {buyer or 'Unknown'}",
+        f"  Sector: {sector or 'UNVERIFIED'}",
+        f"  Owner: {owner or 'Unassigned'}",
+        f"  Reference: {ref}",
+        f"  Indicative value: {indicative_value or 'UNVERIFIED'}",
+        f"  Deadline: {deadline or 'Not stated'}",
+    ]
+    if urgency:
+        lines.append(f"  {urgency}")
+    if overall_rating:
+        lines.append(f"  Phase 2 AI overall rating: {overall_rating} -- {overall_reasoning or ''} (PROVISIONAL, FOR VALIDATION)")
+    lines.extend([
+        f"  Escalation reason: {trigger_reason}",
+        "",
+        f"Review and decide here: {app_url}/notices/{notice_id}" if app_url else f"Review and decide here: /notices/{notice_id}",
+        "The full Internal Addendum (triage gates, capability fit, open questions) is available there too.",
+    ])
+    send_email(to_address, subject, "\n".join(lines))
 
 
 def send_new_opportunity_teams_message(
