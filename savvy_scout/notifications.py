@@ -92,7 +92,14 @@ def send_email(to_address: str, subject: str, body: str) -> None:
 def send_account_invite_email(
     to_address: str, display_name: str, app_url: str, login_identifier: str, temp_password: str
 ) -> None:
-    """Sent when the admin screen creates a new dashboard account."""
+    """Sent whenever someone needs real, working credentials in their inbox:
+    a brand-new account, the first time an email is set on one of the
+    originally-seeded accounts, a password reset, or a manual "resend the
+    invite" click. Always includes the actual username/temp password --
+    2026-08-09, previously the "first email set on an existing account"
+    path sent a bare link with no credentials ("log in with your usual
+    username/password"), which was useless to someone who never had a
+    reason to know their own seeded login before receiving any email at all."""
     body = (
         f"Hi {display_name},\n\n"
         f"An account has been created for you on Savvy Scout: {app_url}\n\n"
@@ -102,20 +109,6 @@ def send_account_invite_email(
         "This is a temporary password -- ask Mark to reset it if you'd like a new one.\n"
     )
     send_email(to_address, "Your Savvy Scout account is ready", body)
-
-
-def send_account_link_email(to_address: str, display_name: str, app_url: str) -> None:
-    """Sent when an admin sets an email on an account that ALREADY has
-    access (2026-08-09) -- e.g. backfilling contact info for one of the four
-    originally-seeded accounts. Deliberately no password here (unlike
-    send_account_invite_email): this isn't a new account, just handing over
-    the link since the person already knows their own login."""
-    body = (
-        f"Hi {display_name},\n\n"
-        f"Your email is now linked to your existing Savvy Scout account: {app_url}\n\n"
-        "Log in with your usual username/password.\n"
-    )
-    send_email(to_address, "Your Savvy Scout app link", body)
 
 
 def send_new_opportunity_email(

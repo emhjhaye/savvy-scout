@@ -13,7 +13,7 @@ from werkzeug.security import generate_password_hash
 
 from savvy_scout.dashboard.auth import get_db
 from savvy_scout.logging_util import log_audit
-from savvy_scout.notifications import NotificationError, send_account_invite_email, send_account_link_email
+from savvy_scout.notifications import NotificationError, send_account_invite_email
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -538,10 +538,12 @@ def update_user_contact(user_id):
     were created before email/Teams notifications existed (2026-08-09) --
     lets an owner actually receive new-opportunity alerts without needing a
     full account re-creation. If this is the first time an email is set on
-    the account (it was empty before), also emails the person the app link
-    (no password -- this isn't a new account, see send_account_link_email)
-    so they actually receive something the moment they gain a real email on
-    file, matching what "Add a teammate" already does for brand-new users."""
+    the account (it was empty before), also issues a fresh temporary
+    password and emails the person their actual username + password
+    (2026-08-09: these are genuinely first logins for them in practice --
+    they never had a reason to know their seeded username/password before
+    getting an email at all -- so "log in with your usual username/
+    password" was useless; give them real, working credentials instead)."""
     if not _is_super_admin():
         flash("Only the admin account can manage users.", "error")
         return redirect(url_for("queues.index"))
@@ -579,19 +581,16 @@ def update_user_contact(user_id):
     conn.commit()
 
     if is_new_email:
-        try:
-            send_account_link_email(email, row["display_name"], _app_url())
-            flash(f"Updated {row['display_name']}'s contact details and emailed them the app link.")
-        except NotificationError as exc:
-            flash(
-                f"Updated {row['display_name']}'s contact details, but the link email couldn't be "
-                f"sent ({exc}). Share this manually: {_app_url()}",
-                "error",
-            )
+        temp_password, (message, category) = _invite_or_reset(email, row["display_name"], row["username"])
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?", (generate_password_hash(temp_password), user_id)
+        )
+        conn.commit()
         log_audit(
             conn, "user", email, "contact_updated", current_user.display_name,
-            f"Set email to {email} for {row['display_name']} (link emailed)",
+            f"Set email to {email} for {row['display_name']} (credentials emailed)",
         )
+        flash(message, category)
         return redirect(url_for("admin.users_index"))
 
     log_audit(
@@ -642,11 +641,10 @@ def reset_user_password(user_id):
 @admin_bp.route("/users/<int:user_id>/send-invite", methods=["POST"])
 @login_required
 def send_invite(user_id):
-    """One-click resend of the app-link email (2026-08-09) -- no password
-    change, unlike Reset Password. Previously the only way to (re)send the
-    link was the empty-to-set email transition firing once automatically;
-    this covers "the email never arrived, just send it again" without
-    forcing a new temporary password on someone who already knows their own."""
+    """One-click resend for "the invite never arrived" (2026-08-09) -- same
+    underlying action as Reset Password (fresh temp password + full
+    username/password emailed), just a friendlier label/entry point for
+    onboarding someone rather than a security-flavoured "reset" action."""
     if not _is_super_admin():
         flash("Only the admin account can manage users.", "error")
         return redirect(url_for("queues.index"))
@@ -660,17 +658,11 @@ def send_invite(user_id):
         flash(f"{row['display_name']} has no email on file yet -- set one first.", "error")
         return redirect(url_for("admin.users_index"))
 
-    app_url = _app_url()
-    try:
-        send_account_link_email(row["email"], row["display_name"], app_url)
-        message = f"Invite email resent to {row['display_name']} at {row['email']}."
-        category = "success"
-    except NotificationError as exc:
-        message = (
-            f"Couldn't send the invite email ({exc}). Share this manually -- link: {app_url}, "
-            f"email: {row['email']}."
-        )
-        category = "error"
+    temp_password, (message, category) = _invite_or_reset(row["email"], row["display_name"], row["username"])
+    conn.execute(
+        "UPDATE users SET password_hash = ? WHERE id = ?", (generate_password_hash(temp_password), user_id)
+    )
+    conn.commit()
     log_audit(conn, "user", row["email"], "invite_resent", current_user.display_name, f"Resent invite to {row['display_name']}")
 
     flash(message, category)
