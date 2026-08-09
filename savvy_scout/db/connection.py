@@ -143,6 +143,14 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             if published_at:
                 conn.execute("UPDATE notices SET published_at = ? WHERE id = ?", (published_at, row["id"]))
 
+    # Internal Addendum sections C-F (2026-08-09) -- see schema.sql's comment
+    # on phase2_assessments. All nullable; existing assessments just don't
+    # have them until re-run.
+    assessment_cols = [r[1] for r in conn.execute("PRAGMA table_info(phase2_assessments)").fetchall()]
+    for col in ("capability_mapping", "blockers", "asks", "recommendation"):
+        if col not in assessment_cols:
+            conn.execute(f"ALTER TABLE phase2_assessments ADD COLUMN {col} TEXT")
+
     if missing_additional_cols:
         import json as _json
 

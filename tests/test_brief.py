@@ -10,9 +10,9 @@ from savvy_scout.triage.scope_read import save_scope_read
 SECTION_TITLES = [
     "TRIAGE GATE SUMMARY",
     "SCOUTING ASSESSMENT",
-    "CAPABILITY FIT",
+    "WHY THIS IS A HIGH FIT",
     "OPEN BLOCKERS AND RISKS",
-    "OPEN QUESTIONS FOR VICTORIA",
+    "DIRECT ASKS FOR TRIFORK VIA VICTORIA",
     "DECISION REQUESTED FROM VICTORIA",
 ]
 
@@ -86,6 +86,52 @@ def test_build_brief_includes_provisional_label_when_assessment_exists(conn, tmp
 
     assert "PROVISIONAL, FOR VALIDATION" in full_text
     assert "Is this really out of sector?" in full_text
+
+
+def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):
+    """Sections C/D/E/F use the richer AI-generated fields (capability
+    mapping, structured blockers, asks with reasons, an explicit
+    recommendation) when a Phase 2 assessment provides them, matching the
+    reference document's exact table shapes -- 2026-08-09."""
+    notice_id = _make_notice(conn)
+    save_scope_read(
+        conn,
+        notice_id,
+        {
+            "capability_fit": {"rating": "HIGH", "reasoning": "Strong engineering fit."},
+            "competitor_position": {"rating": "UNKNOWN", "reasoning": "Not assessed."},
+            "right_to_win": {"rating": "MED", "reasoning": "Adjacent capability."},
+            "overall": {"rating": "PURSUE", "reasoning": "Closest available match."},
+            "open_questions": ["Should not appear -- asks take priority."],
+            "capability_mapping": [
+                {"problem": "Settlement calculations", "capability_mapping": "&Money financial platform"},
+            ],
+            "blockers": [
+                {"blocker": "UK delivery capacity", "assessment": "Approximately 15 UK staff."},
+            ],
+            "asks": [
+                {"ask": "Confirm UK delivery capacity.", "why_it_matters": "Right to win depends on it."},
+            ],
+            "recommendation": {
+                "decision": "PROCEED",
+                "immediate_actions": ["Register interest via the buyer's portal."],
+                "rationale": "Closest available match to engineering strength.",
+            },
+        },
+    )
+    path = build_brief(conn, notice_id, output_dir=str(tmp_path / "briefs"))
+    full_text = _pdf_text(path)
+
+    assert "LCCC problem" in full_text
+    assert "Trifork capability mapping" in full_text
+    assert "&Money financial platform" in full_text
+    assert "UK delivery capacity" in full_text
+    assert "Confirm UK delivery capacity." in full_text
+    assert "Why it matters" in full_text
+    assert "Register interest via the buyer" in full_text
+    assert "Proceed" in full_text
+    # Asks take priority over the plain open_questions fallback.
+    assert "Should not appear" not in full_text
 
 
 def test_record_brief_inserts_row(conn, tmp_path):

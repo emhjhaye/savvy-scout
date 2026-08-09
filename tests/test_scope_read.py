@@ -105,3 +105,33 @@ def test_save_scope_read_persists_all_fields(conn):
     assert row["capability_fit_rating"] == "MED"
     assert row["overall_rating"] == "FLAG"
     assert json.loads(row["open_questions"]) == VALID_ASSESSMENT["open_questions"]
+    # Internal Addendum sections C-F fields are optional -- absent here, so
+    # they persist as NULL rather than raising.
+    assert row["capability_mapping"] is None
+    assert row["blockers"] is None
+    assert row["asks"] is None
+    assert row["recommendation"] is None
+
+
+def test_save_scope_read_persists_internal_addendum_fields_when_present(conn):
+    notice_id = _make_notice(conn)
+    assessment = {
+        **VALID_ASSESSMENT,
+        "capability_mapping": [{"problem": "Real-time payments", "capability_mapping": "&Money"}],
+        "blockers": [{"blocker": "No UK framework access", "assessment": "Hard block if required."}],
+        "asks": [{"ask": "Confirm delivery capacity", "why_it_matters": "Right to win depends on it."}],
+        "recommendation": {
+            "decision": "PROCEED",
+            "immediate_actions": ["Register interest via the buyer's portal."],
+            "rationale": "Closest available match to engineering strength.",
+        },
+    }
+    save_scope_read(conn, notice_id, assessment)
+
+    row = conn.execute(
+        "SELECT * FROM phase2_assessments WHERE notice_id = ? ORDER BY id DESC LIMIT 1", (notice_id,)
+    ).fetchone()
+    assert json.loads(row["capability_mapping"]) == assessment["capability_mapping"]
+    assert json.loads(row["blockers"]) == assessment["blockers"]
+    assert json.loads(row["asks"]) == assessment["asks"]
+    assert json.loads(row["recommendation"]) == assessment["recommendation"]

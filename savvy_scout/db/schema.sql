@@ -317,7 +317,22 @@ CREATE TABLE IF NOT EXISTS phase2_assessments (
     overall_reasoning TEXT NOT NULL,
     open_questions TEXT NOT NULL, -- JSON array
     model_used TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    -- Internal Addendum sections C-F (2026-08-09, matches the reference
+    -- document's exact table shapes): capability_mapping is a JSON array of
+    -- {problem, capability} pairs (Section C, "Why this is a high fit");
+    -- blockers is a JSON array of {blocker, assessment} pairs (Section D,
+    -- broader than just gate flags -- delivery capacity, evidence gaps,
+    -- framework access, clearance, certifications); asks is a JSON array of
+    -- {ask, why_it_matters} pairs (Section E); recommendation is a JSON
+    -- object {decision, immediate_actions: [str], rationale} (Section F).
+    -- All nullable: assessments generated before this migration keep working
+    -- via the older rating/reasoning fields, see escalation/brief.py's
+    -- fallback rendering.
+    capability_mapping TEXT,
+    blockers TEXT,
+    asks TEXT,
+    recommendation TEXT
 );
 
 -- Phase B: escalation briefs (B3). One row per auto-generated brief.

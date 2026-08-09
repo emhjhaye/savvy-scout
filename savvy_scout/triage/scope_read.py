@@ -61,8 +61,71 @@ SCOPE_READ_SCHEMA = {
             "additionalProperties": False,
         },
         "open_questions": {"type": "array", "items": {"type": "string"}},
+        # Internal Addendum Section C ("Why this is a high fit"): each
+        # buyer-side problem paired with the specific Trifork capability/case
+        # study that maps to it -- name real case studies from the profile
+        # (ALai, &Money, Nordjyllandsfonden, AI Mail Assist, etc.), never a
+        # generic capability-area label alone.
+        "capability_mapping": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "problem": {"type": "string"},
+                    "capability_mapping": {"type": "string"},
+                },
+                "required": ["problem", "capability_mapping"],
+                "additionalProperties": False,
+            },
+        },
+        # Section D: broader than gate flags -- delivery capacity, evidence
+        # gaps, framework access, clearance, certifications -- anything a
+        # human bid director would want named before committing further
+        # resource, drawn from the capability profile's known gaps plus
+        # anything specific to this notice.
+        "blockers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "blocker": {"type": "string"},
+                    "assessment": {"type": "string"},
+                },
+                "required": ["blocker", "assessment"],
+                "additionalProperties": False,
+            },
+        },
+        # Section E: each open question paired with why it matters to the
+        # decision, not just a bare list.
+        "asks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "ask": {"type": "string"},
+                    "why_it_matters": {"type": "string"},
+                },
+                "required": ["ask", "why_it_matters"],
+                "additionalProperties": False,
+            },
+        },
+        # Section F: an explicit recommendation with concrete next actions,
+        # not just a rating.
+        "recommendation": {
+            "type": "object",
+            "properties": {
+                "decision": {"type": "string", "enum": ["PROCEED", "DO_NOT_PROCEED", "PARK_FOR_MORE_INFO"]},
+                "immediate_actions": {"type": "array", "items": {"type": "string"}},
+                "rationale": {"type": "string"},
+            },
+            "required": ["decision", "immediate_actions", "rationale"],
+            "additionalProperties": False,
+        },
     },
-    "required": ["capability_fit", "competitor_position", "right_to_win", "overall", "open_questions"],
+    "required": [
+        "capability_fit", "competitor_position", "right_to_win", "overall", "open_questions",
+        "capability_mapping", "blockers", "asks", "recommendation",
+    ],
     "additionalProperties": False,
 }
 
@@ -80,6 +143,22 @@ named in the reasoning, not ignored.
 or LOW confidence framing in the reasoning rather than asserting false confidence.
 - List genuinely open questions Trifork or Victoria would need to resolve before bidding, not \
 rhetorical ones.
+- capability_mapping: pair each real buyer-side problem/requirement stated in the notice with the \
+SPECIFIC named Trifork case study or capability area that maps to it (name the actual case study -- \
+ALai, &Money, Nordjyllandsfonden, AI Mail Assist, Erlang Solutions engineering -- never a generic \
+label alone). If nothing in the profile genuinely maps to a requirement, say so plainly in that row \
+rather than stretching a weak analogy.
+- blockers: every genuine risk or gap that could stop this from proceeding -- draw on the capability \
+profile's "known capability gaps" (clearance, UK government references, framework access, staff \
+scale) plus anything specific to this notice (evidence gaps, requirements not yet published, route \
+to market undecided). Name each plainly; do not soften a real gap into vague language.
+- asks: concrete questions FOR Trifork (via Victoria) that would need answering before or during a \
+bid decision, each paired with why it matters to the decision.
+- recommendation: PROCEED only if capability_fit and right_to_win are not both LOW and no blocker is \
+an outright hard stop; DO_NOT_PROCEED if the fit is fundamentally wrong; PARK_FOR_MORE_INFO when the \
+notice itself is too early-stage (e.g. a preliminary market engagement) to commit either way yet. \
+immediate_actions should be concrete next steps (e.g. "register interest via the buyer's portal"), \
+not vague encouragement.
 - This is a provisional, machine-generated read for a human to validate, not a bid decision."""
 
 
@@ -208,8 +287,9 @@ def save_scope_read(
         "notice_id, capability_fit_rating, capability_fit_reasoning, "
         "competitor_position_rating, competitor_position_reasoning, "
         "right_to_win_rating, right_to_win_reasoning, "
-        "overall_rating, overall_reasoning, open_questions, model_used, created_at"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "overall_rating, overall_reasoning, open_questions, "
+        "capability_mapping, blockers, asks, recommendation, model_used, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             notice_id,
             assessment["capability_fit"]["rating"],
@@ -221,6 +301,10 @@ def save_scope_read(
             assessment["overall"]["rating"],
             assessment["overall"]["reasoning"],
             json.dumps(assessment["open_questions"]),
+            json.dumps(assessment["capability_mapping"]) if assessment.get("capability_mapping") else None,
+            json.dumps(assessment["blockers"]) if assessment.get("blockers") else None,
+            json.dumps(assessment["asks"]) if assessment.get("asks") else None,
+            json.dumps(assessment["recommendation"]) if assessment.get("recommendation") else None,
             model_used,
             now,
         ),
