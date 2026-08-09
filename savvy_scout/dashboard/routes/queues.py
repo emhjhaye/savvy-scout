@@ -594,9 +594,18 @@ def view_brief(notice_id, brief_id):
 
     label = brief["brief_type"].replace("_", " ").title()
     safe_ref = notice["ref"].replace("/", "-")
+    # Briefs escalated before the 2026-08-09 PDF redesign are still real
+    # .docx files on disk -- serve each by its actual on-disk extension
+    # rather than assuming PDF, or a pre-redesign brief opens as a broken
+    # "PDF" (wrong mimetype) instead of the Word doc it actually is.
+    ext = os.path.splitext(brief["docx_path"])[1].lstrip(".").lower() or "pdf"
+    mimetype = (
+        "application/pdf" if ext == "pdf"
+        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
     return send_file(
-        brief["docx_path"], mimetype="application/pdf",
-        as_attachment=False, download_name=f"{label} - {safe_ref}.pdf",
+        brief["docx_path"], mimetype=mimetype,
+        as_attachment=False, download_name=f"{label} - {safe_ref}.{ext}",
     )
 
 
