@@ -15,6 +15,7 @@ from savvy_scout.dashboard.routes.admin import admin_bp
 from savvy_scout.dashboard.routes.home import home_bp
 from savvy_scout.dashboard.routes.queues import queues_bp
 from savvy_scout.db.connection import get_connection, init_db
+from savvy_scout.db.seed_config import seed_all
 
 
 def create_app(settings: Settings) -> Flask:
@@ -54,8 +55,17 @@ def create_app(settings: Settings) -> Flask:
     app.register_blueprint(admin_bp, url_prefix="/admin")
 
     # Ensure schema and lightweight migrations are applied on dashboard boot.
+    # seed_all is called here too (2026-08-09) -- previously only the CLI's
+    # init-db/sweep commands called it, so a database that only ever booted
+    # through the web dashboard (as production's did) had every config_*
+    # table -- crucially config_sources -- sitting empty forever. That's why
+    # "Sweep now" pulled 0 notices: run_sweep reads enabled config_sources
+    # rows to know what to hit, and found none. seed_all only inserts into a
+    # table that's still empty, so this is a no-op everywhere it's already
+    # been seeded via the CLI.
     conn = get_connection(settings.db_path)
     init_db(conn)
+    seed_all(conn)
     conn.close()
 
     # Create test users if they don't exist (development only)
