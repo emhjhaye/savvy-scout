@@ -360,9 +360,41 @@ CREATE TABLE IF NOT EXISTS rule_corrections (
     source TEXT
 );
 
+-- Sweep run history (2026-08-10): a durable, queryable record of every
+-- sweep -- previously the only record of a source succeeding/failing was
+-- Python's logger.exception, which is invisible in production (Render's
+-- logs API doesn't surface application-level output, only deploy
+-- lifecycle events -- confirmed the hard way while diagnosing why Public
+-- Contracts Scotland and Sell2Wales showed zero notices with no visible
+-- error anywhere). One sweep_runs row per sweep, one sweep_run_sources row
+-- per source touched in that run, so "why did source X return nothing on
+-- date Y" is answerable from the app itself, not by re-running code and
+-- guessing.
+CREATE TABLE IF NOT EXISTS sweep_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    triggered_by TEXT NOT NULL, -- a display_name, or 'scheduler' for the daily cron
+    total_pulled INTEGER NOT NULL DEFAULT 0,
+    total_triaged INTEGER NOT NULL DEFAULT 0,
+    total_expiring_leads INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS sweep_run_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sweep_run_id INTEGER NOT NULL REFERENCES sweep_runs(id),
+    source_name TEXT NOT NULL,
+    status TEXT NOT NULL, -- 'success' or 'failed'
+    pulled INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_notices_ref ON notices(ref);
 CREATE INDEX IF NOT EXISTS idx_notices_status ON notices(status);
 CREATE INDEX IF NOT EXISTS idx_gate_results_notice ON gate_results(notice_id);
 CREATE INDEX IF NOT EXISTS idx_triage_runs_notice ON triage_runs(notice_id);
 CREATE INDEX IF NOT EXISTS idx_phase2_assessments_notice ON phase2_assessments(notice_id);
 CREATE INDEX IF NOT EXISTS idx_escalation_briefs_notice ON escalation_briefs(notice_id);
+CREATE INDEX IF NOT EXISTS idx_sweep_run_sources_run ON sweep_run_sources(sweep_run_id);

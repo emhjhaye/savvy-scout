@@ -4,6 +4,7 @@ notice still in NEW status."""
 
 import logging
 import sqlite3
+from datetime import datetime, timezone
 
 from savvy_scout.config import Settings
 from savvy_scout.sweep.dedupe import upsert_notice
@@ -30,8 +31,21 @@ SOURCE_REGISTRY = {
 }
 
 
-def run_sweep(conn: sqlite3.Connection, settings: Settings) -> dict[str, int]:
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def run_sweep(conn: sqlite3.Connection, settings: Settings, triggered_by: str = "unknown") -> dict[str, int]:
+    """triggered_by is a display_name (manual "Sweep now" click) or
+    "scheduler" (the daily cron, see scheduler.py) -- recorded on the
+    sweep_runs row so history shows who/what ran each sweep."""
     stats = {"pulled": 0, "expiring_leads": 0, "triaged": 0}
+
+    run_id = conn.execute(
+        "INSERT INTO sweep_runs (started_at, triggered_by) VALUES (?, ?)",
+        (_now(), triggered_by),
+    ).lastrowid
+    conn.commit()
 
     source_rows = conn.execute(
         "SELECT name, source_type, base_url FROM config_sources WHERE enabled = 1"
@@ -45,17 +59,75 @@ def run_sweep(conn: sqlite3.Connection, settings: Settings) -> dict[str, int]:
                 row["name"], row["source_type"],
             )
             continue
+        source_started_at = _now()
+        source_pulled = 0
+        error_message = None
         try:
             for parsed in sweep_fn(row["base_url"], settings.lookback_days):
                 upsert_notice(conn, parsed)
+                source_pulled += 1
                 stats["pulled"] += 1
                 if surface_if_expiring(conn, parsed):
                     stats["expiring_leads"] += 1
-        except Exception:
+        except Exception as exc:
             logger.exception("Sweep source %r failed; continuing with remaining sources", row["name"])
+            # Truncated: some client exceptions (e.g. an HTTPError) embed the
+            # full response body, which can run to several KB and isn't
+            # useful past the first line or two for "what went wrong."
+            error_message = str(exc)[:1000]
+        conn.execute(
+            "INSERT INTO sweep_run_sources "
+            "(sweep_run_id, source_name, status, pulled, error_message, started_at, finished_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                run_id, row["name"], "failed" if error_message else "success",
+                source_pulled, error_message, source_started_at, _now(),
+            ),
+        )
+        conn.commit()
 
     stats["triaged"] = triage_pending(conn)
+
+    conn.execute(
+        "UPDATE sweep_runs SET finished_at = ?, total_pulled = ?, total_triaged = ?, total_expiring_leads = ? "
+        "WHERE id = ?",
+        (_now(), stats["pulled"], stats["triaged"], stats["expiring_leads"], run_id),
+    )
+    conn.commit()
+
     return stats
+
+
+def get_recent_sweep_runs(conn: sqlite3.Connection, limit: int = 10) -> list[dict]:
+    """Most recent sweep runs, each with its per-source results, for the
+    Sweep History panel -- newest first."""
+    runs = conn.execute(
+        "SELECT * FROM sweep_runs ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    result = []
+    for run in runs:
+        sources = conn.execute(
+            "SELECT * FROM sweep_run_sources WHERE sweep_run_id = ? ORDER BY id", (run["id"],)
+        ).fetchall()
+        result.append({
+            "id": run["id"],
+            "started_at": run["started_at"],
+            "finished_at": run["finished_at"],
+            "triggered_by": run["triggered_by"],
+            "total_pulled": run["total_pulled"],
+            "total_triaged": run["total_triaged"],
+            "total_expiring_leads": run["total_expiring_leads"],
+            "sources": [
+                {
+                    "source_name": s["source_name"],
+                    "status": s["status"],
+                    "pulled": s["pulled"],
+                    "error_message": s["error_message"],
+                }
+                for s in sources
+            ],
+        })
+    return result
 
 
 def triage_pending(conn: sqlite3.Connection) -> int:

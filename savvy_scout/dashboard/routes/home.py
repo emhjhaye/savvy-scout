@@ -22,7 +22,7 @@ from flask_login import current_user, login_required
 
 from savvy_scout.dashboard.auth import get_db
 from savvy_scout.dashboard.scope_filter import IN_SCOPE_UK_STAGES, in_scope_filter_sql
-from savvy_scout.sweep.runner import run_sweep
+from savvy_scout.sweep.runner import get_recent_sweep_runs, run_sweep
 
 home_bp = Blueprint("home", __name__)
 
@@ -481,6 +481,7 @@ def index():
     owner_workload = _build_owner_workload(conn, in_scope_where, in_scope_params)
     contract_expiry_radar = _build_contract_expiry_radar(conn)
     top_buyers = _build_top_buyers(conn, in_scope_where, in_scope_params)
+    sweep_history = get_recent_sweep_runs(conn)
 
     latest_triage_rows = conn.execute(
         f"""
@@ -545,6 +546,7 @@ def index():
         owner_workload=owner_workload,
         contract_expiry_radar=contract_expiry_radar,
         top_buyers=top_buyers,
+        sweep_history=sweep_history,
         sweep_note={"last_run": sweep_last_run, "next_run": sweep_next_run},
         sector_palette=SECTOR_PALETTE,
         triage_colors=TRIAGE_COLORS,
@@ -556,7 +558,7 @@ def index():
 def sweep_now():
     settings = current_app.config["SAVVY_SCOUT_SETTINGS"]
     conn = get_db()
-    stats = run_sweep(conn, settings)
+    stats = run_sweep(conn, settings, triggered_by=current_user.display_name)
     flash(
         f"Sweep complete: pulled {stats['pulled']} notices, surfaced {stats['expiring_leads']} expiring leads, triaged {stats['triaged']} new notices.",
         "success",

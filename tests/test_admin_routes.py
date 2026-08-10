@@ -251,7 +251,7 @@ def test_delete_row_unknown_table_rejected(victoria_client):
 def test_manual_sweep_button_and_route(victoria_client, app, monkeypatch):
     called = {}
 
-    def fake_run_sweep(conn, settings):
+    def fake_run_sweep(conn, settings, **kwargs):
         called["db_path"] = settings.db_path
         return {"pulled": 3, "expiring_leads": 1, "triaged": 2}
 

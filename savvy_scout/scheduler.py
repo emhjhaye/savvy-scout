@@ -35,7 +35,7 @@ def run_daily_sweep() -> None:
     try:
         init_db(conn)
         seed_all(conn)
-        stats = run_sweep(conn, settings)
+        stats = run_sweep(conn, settings, triggered_by="scheduler")
         logger.info(
             "Scheduled sweep: pulled %s notices, %s expiring leads, %s triaged",
             stats["pulled"], stats["expiring_leads"], stats["triaged"],

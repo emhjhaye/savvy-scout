@@ -44,7 +44,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     conn = get_connection(settings.db_path)
     init_db(conn)
     seed_all(conn)
-    stats = run_sweep(conn, settings)
+    stats = run_sweep(conn, settings, triggered_by="cli")
     print(
         f"Pulled {stats['pulled']} notices, surfaced {stats['expiring_leads']} expiring-contract "
         f"leads, triaged {stats['triaged']} new notices."
