@@ -27,6 +27,12 @@ from savvy_scout.sweep.runner import get_recent_sweep_runs, run_sweep
 home_bp = Blueprint("home", __name__)
 
 LONDON = ZoneInfo("Europe/London")
+# The team works out of the Philippines -- the sweep schedule (see
+# scheduler.py) and its Last/Next sweep display below are in Manila time.
+# Deliberately separate from LONDON, which stays UK time for Sector
+# Performance/Notices by Source -- those bucket by the UK sources' own
+# calendar day, not by when the team happens to be looking at the page.
+MANILA = ZoneInfo("Asia/Manila")
 # Full week, not just Mon-Fri (2026-08-10): the daily sweep has no
 # day_of_week restriction and already runs every day (see scheduler.py),
 # and government sources do publish notices over the weekend -- confirmed
@@ -68,6 +74,13 @@ def _pretty_date(value: datetime) -> str:
 
 def _pretty_datetime(value: datetime) -> str:
     return value.strftime("%d %b %Y, %I:%M %p %Z")
+
+
+def _pretty_manila_datetime(value: datetime) -> str:
+    """Same shape as _pretty_datetime, but spells out "Philippines time"
+    instead of relying on %Z -- Asia/Manila's own abbreviation is "PST"
+    (Philippine Standard Time), easily misread as US Pacific time."""
+    return value.strftime("%d %b %Y, %I:%M %p") + " Philippines time"
 
 
 def _to_london_datetime(value: str | None) -> datetime | None:
@@ -405,6 +418,7 @@ def index():
     conn = get_db()
     now = datetime.now(timezone.utc)
     uk_now = now.astimezone(LONDON)
+    manila_now = now.astimezone(MANILA)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
     tomorrow_start = today_start + timedelta(days=1)
@@ -464,18 +478,18 @@ def index():
     sweep_last_run = None
     sweep_next_run = None
     try:
-        next_uk_run = uk_now.replace(hour=8, minute=0, second=0, microsecond=0)
-        if uk_now >= next_uk_run:
-            next_uk_run += timedelta(days=1)
-        sweep_next_run = _pretty_datetime(next_uk_run)
+        next_manila_run = manila_now.replace(hour=8, minute=0, second=0, microsecond=0)
+        if manila_now >= next_manila_run:
+            next_manila_run += timedelta(days=1)
+        sweep_next_run = _pretty_manila_datetime(next_manila_run)
     except Exception:
-        sweep_next_run = "8:00 AM UK time daily"
+        sweep_next_run = "8:00 AM Philippines time daily"
 
     last_swept_at = last_swept_row["last_swept_at"] if last_swept_row else None
     if last_swept_at:
         try:
             last_swept_dt = datetime.fromisoformat(last_swept_at)
-            sweep_last_run = _pretty_datetime(last_swept_dt.astimezone(LONDON))
+            sweep_last_run = _pretty_manila_datetime(last_swept_dt.astimezone(MANILA))
         except Exception:
             sweep_last_run = last_swept_at
 
