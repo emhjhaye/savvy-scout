@@ -1,9 +1,14 @@
 requests>=2.31
+certifi  # explicit, not just a transitive dep of requests -- sources/ocds_client_base.py
+         # merges its bundle with sources/extra_ca_certs/ at import time.
 pip-system-certs>=4.0; sys_platform == 'win32'  # Windows only -- hooks the OS cert
                        # store, which doesn't exist on Linux (Render). Fixes 403/TLS
                        # failures against api.publiccontractsscotland.gov.uk /
-                       # api.sell2wales.gov.wales on Windows dev machines; on Linux
-                       # those two sources may need a different fix (see deploy notes).
+                       # api.sell2wales.gov.wales on Windows dev machines. The Linux
+                       # (Render) fix predicted here turned out to be a genuinely
+                       # missing intermediate CA on both sites' own TLS setup -- see
+                       # ocds_client_base.py's module docstring, confirmed live
+                       # 2026-08-10 and fixed by supplying it via extra_ca_certs/.
 rapidfuzz>=3.6
 openpyxl>=3.1
 python-dotenv>=1.0
