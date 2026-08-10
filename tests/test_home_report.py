@@ -307,6 +307,51 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     assert swept_total_row["week"] == 1
 
 
+def test_sector_with_only_a_publish_date_unknown_notice_still_gets_a_row(tmp_path):
+    """2026-08-10 finding #5, found live: Fintech's only in-scope notice had
+    publish_date_unknown=1 (discovered via an award/update release), and the
+    whole "Fintech" row vanished from Sector Performance entirely -- not
+    just its date columns -- even though it correctly still counted in
+    Sector mix/Total scouted (a separate, date-independent count). A
+    sector's row must exist as soon as it has any in-scope notice at all,
+    with zeroed date columns for the ones with no confirmed publish date,
+    not disappear."""
+    from zoneinfo import ZoneInfo
+
+    from savvy_scout.dashboard.routes.home import _build_sector_performance, _build_source_performance
+
+    db_path = str(tmp_path / "test.db")
+    setup_conn = get_connection(db_path)
+    init_db(setup_conn)
+    seed_all(setup_conn)
+
+    now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
+
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-FINTECH-UNKNOWN",
+        first_seen_at=now_uk.isoformat(),
+        first_published_at=None,
+        published_at=now_uk.isoformat(),
+        publish_date_unknown=1,
+    )
+    setup_conn.commit()
+
+    sector_perf = _build_sector_performance(setup_conn, now_uk)
+    source_perf = _build_source_performance(setup_conn, now_uk)
+    setup_conn.close()
+
+    fintech_row = next((r for r in sector_perf["rows"] if r["sector"] == "Fintech"), None)
+    assert fintech_row is not None, "Fintech's row must exist even though its only notice has no confirmed date"
+    assert sum(fintech_row["days"]) == 0
+    assert fintech_row["week"] == 0
+    assert fintech_row["month"] == 0
+    assert fintech_row["ytd"] == 0
+
+    source_row = next((r for r in source_perf["rows"] if r["sector"] == "Find a Tender"), None)
+    assert source_row is not None, "the source's row must exist even if every notice has no confirmed date"
+    assert sum(source_row["days"]) == 0
+
+
 def test_award_only_discovery_excluded_from_every_date_bucket(tmp_path):
     """2026-08-10 finding #2: a notice first discovered via an award/
     contract/amendment/termination release (publish_date_unknown=1) has no

@@ -221,14 +221,27 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
     swept_total = _new_perf_bucket(weekdays)
 
     for row in rows:
+        # Seed the sector's row as soon as it's in scope at all (2026-08-10
+        # fix), regardless of whether THIS notice has a usable report_date --
+        # otherwise a sector whose only in-scope notice has
+        # publish_date_unknown=1 (discovered via an award/update release, no
+        # confirmed publish date) never gets a row here at all, even though
+        # it's correctly counted in Sector mix/Total scouted (found live:
+        # Fintech's only in-scope notice was exactly this case, and the
+        # sector silently vanished from this table entirely, not just its
+        # date columns).
+        is_in_scope = predicate(row["sector"], row["cpv_primary"], row["uk_stage"])
+        if is_in_scope:
+            sector_buckets.setdefault(row["sector"], _new_perf_bucket(weekdays))
+
         report_date = _report_date(row)
         if report_date is None:
             continue
         _accumulate_perf(swept_total, report_date, weekdays, week_start, week_end, month_start, year_start)
 
-        if predicate(row["sector"], row["cpv_primary"], row["uk_stage"]):
+        if is_in_scope:
             _accumulate_perf(in_scope_total, report_date, weekdays, week_start, week_end, month_start, year_start)
-            bucket = sector_buckets.setdefault(row["sector"], _new_perf_bucket(weekdays))
+            bucket = sector_buckets[row["sector"]]
             _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start)
 
     perf_rows = [
@@ -396,11 +409,16 @@ def _build_source_performance(conn, now_uk: datetime) -> dict:
     grand_total = _new_perf_bucket(weekdays)
 
     for row in rows:
+        # Seed the source's row unconditionally (2026-08-10 fix, same as
+        # Sector Performance above) -- a source whose every notice happens
+        # to have publish_date_unknown=1 must still show its own zeroed row
+        # here, not vanish entirely.
+        bucket = source_buckets.setdefault(row["source"] or "Unknown", _new_perf_bucket(weekdays))
+
         report_date = _report_date(row)
         if report_date is None:
             continue
         _accumulate_perf(grand_total, report_date, weekdays, week_start, week_end, month_start, year_start)
-        bucket = source_buckets.setdefault(row["source"] or "Unknown", _new_perf_bucket(weekdays))
         _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start)
 
     perf_rows = [
