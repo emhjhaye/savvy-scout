@@ -21,6 +21,7 @@ from flask import Blueprint, current_app, flash, redirect, render_template, url_
 from flask_login import current_user, login_required
 
 from savvy_scout.dashboard.auth import get_db
+from savvy_scout.dashboard.notifications import victoria_sourced_reject_sql
 from savvy_scout.dashboard.scope_filter import IN_SCOPE_UK_STAGES, in_scope_filter_sql
 from savvy_scout.sweep.runner import get_recent_sweep_runs, run_sweep
 
@@ -350,29 +351,38 @@ def _build_owner_workload(conn, in_scope_where, in_scope_params) -> list[dict]:
     return [{"owner": r["owner"], "count": r["cnt"]} for r in rows]
 
 
-def _build_approval_rate(conn, in_scope_where, in_scope_params) -> dict:
-    """Approved vs Rejected (2026-08-10, replacing the Contract Expiry Radar
-    panel -- removing it was a deliberate call: its own future re-procurement
-    lead will still show up normally once the buyer actually publishes the
-    new tender, since that falls within the regular sweep's lookback window
-    at that time; the panel only bought advance warning, which the team
-    decided wasn't worth it). A win-rate signal -- of every notice that
-    reached a human decision, what share went each way -- distinct from
-    _build_pipeline_funnel's raw stage counts. APPROVED or anything further
-    along the happy path (CAPTURE_BRIEF_DRAFTED, DOCS_DOWNLOADED, CALENDARED,
-    ACTIVE) counts as approved, since those all passed through an APPROVED
-    decision on the way; REJECTED counts as rejected. Anything still awaiting
-    a decision, or parked/monitoring, isn't counted either way -- it hasn't
-    reached an outcome yet."""
-    rows = conn.execute(
-        f"SELECT status, COUNT(*) AS cnt FROM notices WHERE {in_scope_where} GROUP BY status",
-        tuple(in_scope_params),
-    ).fetchall()
-    counts = {r["status"]: r["cnt"] for r in rows}
-    approved = sum(
-        counts.get(s, 0) for s in ("APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE")
-    )
-    rejected = counts.get("REJECTED", 0)
+#: Approved (2026-08-10): APPROVED or anything further along the happy path
+#: (CAPTURE_BRIEF_DRAFTED, DOCS_DOWNLOADED, CALENDARED, ACTIVE) -- all passed
+#: through an APPROVED decision on the way, and APPROVED is only ever reached
+#: via victoria_decision('approve') (see workflow.approvals.approve_phase2's
+#: docstring -- an owner's own "approval" at Phase 2 only escalates to
+#: Victoria, it never sets APPROVED itself), so this is inherently Victoria's
+#: call alone already, with no extra filter needed.
+_APPROVED_STATUSES = ("APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE")
+
+
+def _approval_rate_sql(in_scope_where: str) -> str:
+    """Shared SELECT for both the aggregate and per-owner Approved vs
+    Rejected breakdowns -- rejected is deliberately scoped to
+    victoria_sourced_reject_sql (2026-08-10, explicit request: "rejection
+    and approval should [be the] same"), matching approved already being
+    Victoria-only by construction. An owner's own earlier reject (from
+    TO_REVIEW or AWAITING_PHASE2_APPROVAL, before ever reaching her) is a
+    real, valid decision -- see that helper's own docstring -- it just isn't
+    counted in THIS specific "how does Victoria's own call rate compare"
+    panel."""
+    approved_case = "n.status IN (" + ", ".join(f"'{s}'" for s in _APPROVED_STATUSES) + ")"
+    return f"""
+        SELECT
+            n.owner AS owner,
+            SUM(CASE WHEN {approved_case} THEN 1 ELSE 0 END) AS approved,
+            SUM(CASE WHEN n.status = 'REJECTED' AND {victoria_sourced_reject_sql('n')} THEN 1 ELSE 0 END) AS rejected
+        FROM notices n
+        WHERE {in_scope_where}
+    """
+
+
+def _approval_rate_from_counts(approved: int, rejected: int) -> dict:
     total = approved + rejected
     return {
         "approved": approved,
@@ -381,6 +391,38 @@ def _build_approval_rate(conn, in_scope_where, in_scope_params) -> dict:
         "approved_pct": round(approved / total * 100, 1) if total else 0,
         "rejected_pct": round(rejected / total * 100, 1) if total else 0,
     }
+
+
+def _build_approval_rate(conn, in_scope_where, in_scope_params) -> dict:
+    """Approved vs Rejected (2026-08-10, replacing the Contract Expiry Radar
+    panel -- removing it was a deliberate call: its own future re-procurement
+    lead will still show up normally once the buyer actually publishes the
+    new tender, since that falls within the regular sweep's lookback window
+    at that time; the panel only bought advance warning, which the team
+    decided wasn't worth it). A win-rate signal at Victoria's own decision
+    level specifically -- see _approval_rate_sql -- distinct from
+    _build_pipeline_funnel's raw stage counts. Anything still awaiting a
+    decision, parked/monitoring, or rejected before ever reaching her isn't
+    counted either way here."""
+    row = conn.execute(_approval_rate_sql(in_scope_where), tuple(in_scope_params)).fetchone()
+    return _approval_rate_from_counts(row["approved"] or 0, row["rejected"] or 0)
+
+
+def _build_approval_rate_by_owner(conn, in_scope_where, in_scope_params) -> list[dict]:
+    """Same Approved vs Rejected definition as _build_approval_rate, broken
+    out per owner (2026-08-10 explicit request) -- lets each sector owner
+    (and Victoria, looking across everyone) see whose escalated notices
+    tend to land with her vs get turned down, not just one aggregate
+    figure."""
+    rows = conn.execute(
+        _approval_rate_sql(in_scope_where) + " AND n.owner IS NOT NULL GROUP BY n.owner ORDER BY n.owner",
+        tuple(in_scope_params),
+    ).fetchall()
+    result = [
+        {"owner": r["owner"], **_approval_rate_from_counts(r["approved"] or 0, r["rejected"] or 0)}
+        for r in rows
+    ]
+    return [r for r in result if r["total"] > 0]
 
 
 def _build_top_buyers(conn, in_scope_where, in_scope_params, limit=8) -> list[dict]:
@@ -552,6 +594,7 @@ def index():
     pipeline_funnel = _build_pipeline_funnel(conn, in_scope_where, in_scope_params)
     owner_workload = _build_owner_workload(conn, in_scope_where, in_scope_params)
     approval_rate = _build_approval_rate(conn, in_scope_where, in_scope_params)
+    approval_rate_by_owner = _build_approval_rate_by_owner(conn, in_scope_where, in_scope_params)
     top_buyers = _build_top_buyers(conn, in_scope_where, in_scope_params)
     sweep_history = get_recent_sweep_runs(conn)
 
@@ -617,6 +660,7 @@ def index():
         pipeline_funnel=pipeline_funnel,
         owner_workload=owner_workload,
         approval_rate=approval_rate,
+        approval_rate_by_owner=approval_rate_by_owner,
         top_buyers=top_buyers,
         sweep_history=sweep_history,
         sweep_note={"last_run": sweep_last_run, "next_run": sweep_next_run},

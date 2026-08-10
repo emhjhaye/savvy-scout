@@ -307,11 +307,31 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     assert swept_total_row["week"] == 1
 
 
-def test_approval_rate_counts_approved_and_further_stages_vs_rejected(tmp_path):
+def _set_status_via_history(conn, ref: str, from_status: str | None, to_status: str, changed_by: str) -> None:
+    """Directly inserts the status_history row a real transition would
+    write, so victoria_sourced_reject_sql's EXISTS check (keyed off the
+    notice's MOST RECENT status_history row) sees exactly what a real
+    reject_notice()/mark_victoria_decision() call would have left behind."""
+    now = datetime.now(timezone.utc).isoformat()
+    notice_id = conn.execute("SELECT id FROM notices WHERE ref = ?", (ref,)).fetchone()["id"]
+    conn.execute("UPDATE notices SET status = ? WHERE id = ?", (to_status, notice_id))
+    conn.execute(
+        "INSERT INTO status_history (notice_id, from_status, to_status, changed_by, changed_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (notice_id, from_status, to_status, changed_by, now),
+    )
+
+
+def test_approval_rate_counts_approved_and_victoria_sourced_rejections_only(tmp_path):
     """2026-08-10: replaces the removed Contract Expiry Radar panel.
     APPROVED and every stage further along the happy path (CAPTURE_BRIEF_
     DRAFTED, DOCS_DOWNLOADED, CALENDARED, ACTIVE) all count as approved --
-    they passed through an APPROVED decision on the way. Notices still
+    they passed through an APPROVED decision on the way, which is only ever
+    Victoria's own call (see workflow.approvals.approve_phase2's docstring).
+    Rejected is deliberately scoped the same way (explicit request:
+    "rejection and approval should [be the] same") -- only a REJECTED
+    reached via ESCALATED_TO_VICTORIA counts; an owner's own earlier reject
+    (straight from TO_REVIEW, never reaching her) does not. Notices still
     awaiting a decision (TO_REVIEW here) don't count either way."""
     from savvy_scout.dashboard.routes.home import _build_approval_rate
     from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
@@ -322,15 +342,21 @@ def test_approval_rate_counts_approved_and_further_stages_vs_rejected(tmp_path):
     seed_all(conn)
 
     now = datetime.now(timezone.utc).isoformat()
-    for ref, status in [
-        ("REF-APPROVED", "APPROVED"),
-        ("REF-CALENDARED", "CALENDARED"),
-        ("REF-ACTIVE", "ACTIVE"),
-        ("REF-REJECTED-1", "REJECTED"),
-        ("REF-STILL-DECIDING", "TO_REVIEW"),
+    for ref in [
+        "REF-APPROVED", "REF-CALENDARED", "REF-ACTIVE",
+        "REF-VICTORIA-REJECTED", "REF-OWNER-REJECTED", "REF-STILL-DECIDING",
     ]:
         _insert_notice(conn, ref, now, "Fintech")
-        conn.execute("UPDATE notices SET status = ? WHERE ref = ?", (status, ref))
+    conn.commit()
+
+    _set_status_via_history(conn, "REF-APPROVED", "ESCALATED_TO_VICTORIA", "APPROVED", "Victoria")
+    _set_status_via_history(conn, "REF-CALENDARED", "ESCALATED_TO_VICTORIA", "APPROVED", "Victoria")
+    conn.execute("UPDATE notices SET status = 'CALENDARED' WHERE ref = 'REF-CALENDARED'")
+    _set_status_via_history(conn, "REF-ACTIVE", "ESCALATED_TO_VICTORIA", "APPROVED", "Victoria")
+    conn.execute("UPDATE notices SET status = 'ACTIVE' WHERE ref = 'REF-ACTIVE'")
+    _set_status_via_history(conn, "REF-VICTORIA-REJECTED", "ESCALATED_TO_VICTORIA", "REJECTED", "Victoria")
+    # An owner's own early reject, straight from TO_REVIEW -- never reached Victoria.
+    _set_status_via_history(conn, "REF-OWNER-REJECTED", "TO_REVIEW", "REJECTED", "Mark")
     conn.commit()
 
     in_scope_where, in_scope_params = in_scope_filter_sql(conn)
@@ -342,6 +368,44 @@ def test_approval_rate_counts_approved_and_further_stages_vs_rejected(tmp_path):
     assert result["total"] == 4
     assert result["approved_pct"] == 75.0
     assert result["rejected_pct"] == 25.0
+
+
+def test_approval_rate_by_owner_breaks_down_per_owner(tmp_path):
+    """2026-08-10 explicit request: not just one aggregate figure, per
+    owner too -- Mark's and Kanvesh's notices must be counted separately,
+    each against the same Victoria-sourced-rejection definition."""
+    from savvy_scout.dashboard.routes.home import _build_approval_rate_by_owner
+    from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
+
+    db_path = str(tmp_path / "test.db")
+    conn = get_connection(db_path)
+    init_db(conn)
+    seed_all(conn)
+
+    now = datetime.now(timezone.utc).isoformat()
+    for ref, owner in [
+        ("REF-MARK-1", "Mark"), ("REF-MARK-2", "Mark"), ("REF-KANVESH-1", "Kanvesh"),
+    ]:
+        _insert_notice(conn, ref, now, "Fintech")
+        conn.execute("UPDATE notices SET owner = ? WHERE ref = ?", (owner, ref))
+    conn.commit()
+
+    _set_status_via_history(conn, "REF-MARK-1", "ESCALATED_TO_VICTORIA", "APPROVED", "Victoria")
+    _set_status_via_history(conn, "REF-MARK-2", "ESCALATED_TO_VICTORIA", "REJECTED", "Victoria")
+    _set_status_via_history(conn, "REF-KANVESH-1", "ESCALATED_TO_VICTORIA", "APPROVED", "Victoria")
+    conn.commit()
+
+    in_scope_where, in_scope_params = in_scope_filter_sql(conn)
+    rows = _build_approval_rate_by_owner(conn, in_scope_where, in_scope_params)
+    conn.close()
+
+    by_owner = {r["owner"]: r for r in rows}
+    assert by_owner["Mark"]["approved"] == 1
+    assert by_owner["Mark"]["rejected"] == 1
+    assert by_owner["Mark"]["approved_pct"] == 50.0
+    assert by_owner["Kanvesh"]["approved"] == 1
+    assert by_owner["Kanvesh"]["rejected"] == 0
+    assert by_owner["Kanvesh"]["approved_pct"] == 100.0
 
 
 def test_sector_with_only_a_publish_date_unknown_notice_still_gets_a_row(tmp_path):
