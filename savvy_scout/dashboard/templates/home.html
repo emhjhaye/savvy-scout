@@ -374,23 +374,27 @@
 
       <div class="panel">
         <div class="panel-head">
-          <div class="panel-title">Contract expiry radar</div>
-          <div class="panel-subtitle">Soonest-expiring incumbent contracts &mdash; re-procurement leads</div>
+          <div class="panel-title">Approved vs Rejected</div>
+          <div class="panel-subtitle">Of every notice that reached a decision, how many went each way</div>
         </div>
-        <div class="mini-list">
-          {% for c in contract_expiry_radar %}
-          <div class="mini-row">
-            <span>
-              <div class="mini-title">{{ c.title | truncate(60, True, '…') }}</div>
-              <div class="mini-meta">{{ c.buyer or 'Unknown buyer' }} &middot; review by {{ c.review_date }}</div>
-            </span>
-            <span class="mini-value">{{ c.end_date }}</span>
+        {% if approval_rate.total %}
+        <div style="display:flex; gap:28px; padding: 6px 0 12px;">
+          <div>
+            <div style="font-size:22px; font-weight:900; color:#10B981; line-height:1.1;">{{ approval_rate.approved_pct }}%</div>
+            <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px;">Approved ({{ approval_rate.approved }})</div>
           </div>
-          {% endfor %}
-          {% if not contract_expiry_radar %}
-          <div class="mini-empty">No upcoming contract expiries surfaced yet.</div>
-          {% endif %}
+          <div>
+            <div style="font-size:22px; font-weight:900; color:#DC2626; line-height:1.1;">{{ approval_rate.rejected_pct }}%</div>
+            <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px;">Rejected ({{ approval_rate.rejected }})</div>
+          </div>
         </div>
+        <div class="meter-track" style="display:flex;">
+          <div style="height:100%; width: {{ approval_rate.approved_pct }}%; background:#10B981;"></div>
+          <div style="height:100%; width: {{ approval_rate.rejected_pct }}%; background:#DC2626;"></div>
+        </div>
+        {% else %}
+        <div class="mini-empty">No notices have reached an Approved/Rejected decision yet.</div>
+        {% endif %}
       </div>
     </div>
 

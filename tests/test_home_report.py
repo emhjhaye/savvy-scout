@@ -307,6 +307,43 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     assert swept_total_row["week"] == 1
 
 
+def test_approval_rate_counts_approved_and_further_stages_vs_rejected(tmp_path):
+    """2026-08-10: replaces the removed Contract Expiry Radar panel.
+    APPROVED and every stage further along the happy path (CAPTURE_BRIEF_
+    DRAFTED, DOCS_DOWNLOADED, CALENDARED, ACTIVE) all count as approved --
+    they passed through an APPROVED decision on the way. Notices still
+    awaiting a decision (TO_REVIEW here) don't count either way."""
+    from savvy_scout.dashboard.routes.home import _build_approval_rate
+    from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
+
+    db_path = str(tmp_path / "test.db")
+    conn = get_connection(db_path)
+    init_db(conn)
+    seed_all(conn)
+
+    now = datetime.now(timezone.utc).isoformat()
+    for ref, status in [
+        ("REF-APPROVED", "APPROVED"),
+        ("REF-CALENDARED", "CALENDARED"),
+        ("REF-ACTIVE", "ACTIVE"),
+        ("REF-REJECTED-1", "REJECTED"),
+        ("REF-STILL-DECIDING", "TO_REVIEW"),
+    ]:
+        _insert_notice(conn, ref, now, "Fintech")
+        conn.execute("UPDATE notices SET status = ? WHERE ref = ?", (status, ref))
+    conn.commit()
+
+    in_scope_where, in_scope_params = in_scope_filter_sql(conn)
+    result = _build_approval_rate(conn, in_scope_where, in_scope_params)
+    conn.close()
+
+    assert result["approved"] == 3
+    assert result["rejected"] == 1
+    assert result["total"] == 4
+    assert result["approved_pct"] == 75.0
+    assert result["rejected_pct"] == 25.0
+
+
 def test_sector_with_only_a_publish_date_unknown_notice_still_gets_a_row(tmp_path):
     """2026-08-10 finding #5, found live: Fintech's only in-scope notice had
     publish_date_unknown=1 (discovered via an award/update release), and the

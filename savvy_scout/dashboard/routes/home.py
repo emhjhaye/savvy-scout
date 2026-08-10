@@ -350,29 +350,37 @@ def _build_owner_workload(conn, in_scope_where, in_scope_params) -> list[dict]:
     return [{"owner": r["owner"], "count": r["cnt"]} for r in rows]
 
 
-def _build_contract_expiry_radar(conn, limit=8) -> list[dict]:
-    """Soonest-expiring incumbent contracts (2026-07's expiry radar, see
-    sweep/expiry_radar.py) -- re-procurement leads, a separate feed from
-    fresh notices, worth surfacing on the same Overview since they're the
-    same kind of "opportunity to watch for.\""""
-    today = datetime.now(timezone.utc).date().isoformat()
+def _build_approval_rate(conn, in_scope_where, in_scope_params) -> dict:
+    """Approved vs Rejected (2026-08-10, replacing the Contract Expiry Radar
+    panel -- removing it was a deliberate call: its own future re-procurement
+    lead will still show up normally once the buyer actually publishes the
+    new tender, since that falls within the regular sweep's lookback window
+    at that time; the panel only bought advance warning, which the team
+    decided wasn't worth it). A win-rate signal -- of every notice that
+    reached a human decision, what share went each way -- distinct from
+    _build_pipeline_funnel's raw stage counts. APPROVED or anything further
+    along the happy path (CAPTURE_BRIEF_DRAFTED, DOCS_DOWNLOADED, CALENDARED,
+    ACTIVE) counts as approved, since those all passed through an APPROVED
+    decision on the way; REJECTED counts as rejected. Anything still awaiting
+    a decision, or parked/monitoring, isn't counted either way -- it hasn't
+    reached an outcome yet."""
     rows = conn.execute(
-        """
-        SELECT notice_ref, buyer, title, end_date, review_date
-        FROM contract_expiry
-        WHERE end_date >= ?
-        ORDER BY end_date ASC
-        LIMIT ?
-        """,
-        (today, limit),
+        f"SELECT status, COUNT(*) AS cnt FROM notices WHERE {in_scope_where} GROUP BY status",
+        tuple(in_scope_params),
     ).fetchall()
-    return [
-        {
-            "notice_ref": r["notice_ref"], "buyer": r["buyer"], "title": r["title"],
-            "end_date": r["end_date"][:10], "review_date": r["review_date"][:10],
-        }
-        for r in rows
-    ]
+    counts = {r["status"]: r["cnt"] for r in rows}
+    approved = sum(
+        counts.get(s, 0) for s in ("APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE")
+    )
+    rejected = counts.get("REJECTED", 0)
+    total = approved + rejected
+    return {
+        "approved": approved,
+        "rejected": rejected,
+        "total": total,
+        "approved_pct": round(approved / total * 100, 1) if total else 0,
+        "rejected_pct": round(rejected / total * 100, 1) if total else 0,
+    }
 
 
 def _build_top_buyers(conn, in_scope_where, in_scope_params, limit=8) -> list[dict]:
@@ -543,7 +551,7 @@ def index():
     upcoming_deadlines = _build_upcoming_deadlines(conn, in_scope_where, in_scope_params)
     pipeline_funnel = _build_pipeline_funnel(conn, in_scope_where, in_scope_params)
     owner_workload = _build_owner_workload(conn, in_scope_where, in_scope_params)
-    contract_expiry_radar = _build_contract_expiry_radar(conn)
+    approval_rate = _build_approval_rate(conn, in_scope_where, in_scope_params)
     top_buyers = _build_top_buyers(conn, in_scope_where, in_scope_params)
     sweep_history = get_recent_sweep_runs(conn)
 
@@ -608,7 +616,7 @@ def index():
         upcoming_deadlines=upcoming_deadlines,
         pipeline_funnel=pipeline_funnel,
         owner_workload=owner_workload,
-        contract_expiry_radar=contract_expiry_radar,
+        approval_rate=approval_rate,
         top_buyers=top_buyers,
         sweep_history=sweep_history,
         sweep_note={"last_run": sweep_last_run, "next_run": sweep_next_run},
