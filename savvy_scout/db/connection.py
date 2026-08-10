@@ -143,6 +143,20 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             if published_at:
                 conn.execute("UPDATE notices SET published_at = ? WHERE id = ?", (published_at, row["id"]))
 
+    # first_published_at (2026-08-10): published_at gets overwritten on
+    # every re-sweep with the source release's latest "date" (see
+    # sweep.dedupe.upsert_notice), so an old notice amended/awarded/
+    # cancelled today silently looks newly published today in Sector
+    # Performance/Notices by Source. first_published_at is set once on
+    # insert and never touched again -- see schema.sql's comment on it.
+    # Backfilled from each row's current published_at, the closest
+    # approximation available for notices that already existed before this
+    # column did; going forward it's set correctly at first-seen time.
+    notice_cols_now = [r[1] for r in conn.execute("PRAGMA table_info(notices)").fetchall()]
+    if "first_published_at" not in notice_cols_now:
+        conn.execute("ALTER TABLE notices ADD COLUMN first_published_at TEXT")
+        conn.execute("UPDATE notices SET first_published_at = published_at WHERE first_published_at IS NULL")
+
     # Internal Addendum sections C-F (2026-08-09) -- see schema.sql's comment
     # on phase2_assessments. All nullable; existing assessments just don't
     # have them until re-run.

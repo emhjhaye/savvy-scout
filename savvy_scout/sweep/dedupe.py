@@ -85,7 +85,7 @@ def _insert_notice(conn, notice, parsed, cpv_additional_json, lot_statuses_json,
         f"{', '.join(additional_cols)}, "
         "text_blob, tender_status, lot_statuses, tender_period_end, pme_due_date, "
         "future_notice_date, contract_end_date, is_award, raw_json, published_at, "
-        "first_seen_at, last_swept_at, created_at, updated_at"
+        "first_published_at, first_seen_at, last_swept_at, created_at, updated_at"
     )
     num_columns = len(columns.split(","))
     cursor = conn.execute(
@@ -123,6 +123,7 @@ def _insert_notice(conn, notice, parsed, cpv_additional_json, lot_statuses_json,
             parsed.contract_end_date,
             int(parsed.is_award),
             notice.raw_json,
+            notice.published_at,
             notice.published_at,
             now,
             now,

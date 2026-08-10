@@ -78,14 +78,21 @@ def _to_london_datetime(value: str | None) -> datetime | None:
 
 
 def _report_date(row):
-    """The date a notice counts under for Sector Performance: its real
-    publication date (published_at, from the OCDS release's own "date"
-    field) if we have it, else first_seen_at as a fallback for the rare
-    notice a source published without a usable date. Never first_seen_at by
-    default -- that's when OUR sweep found it, not when the buyer actually
-    published it, and would make every notice from before this app existed
-    look like it was all published on the one day we started sweeping."""
-    dt = _to_london_datetime(row["published_at"]) or _to_london_datetime(row["first_seen_at"])
+    """The date a notice counts under for Sector Performance: first_published_at
+    (set once, on first insert, never touched again) if we have it, else the
+    older published_at, else first_seen_at as a last-resort fallback for the
+    rare notice a source published without a usable date. Deliberately NOT
+    published_at first -- that's the source release's own "date" field, its
+    LAST-UPDATED timestamp, which gets overwritten on every re-sweep. Without
+    first_published_at, a 3-week-old notice amended/awarded/cancelled today
+    would silently look newly published today (2026-08-10 finding). Never
+    first_seen_at by default -- that's when OUR sweep found it, not when the
+    buyer actually published it."""
+    dt = (
+        _to_london_datetime(row["first_published_at"])
+        or _to_london_datetime(row["published_at"])
+        or _to_london_datetime(row["first_seen_at"])
+    )
     return dt.date() if dt else None
 
 
@@ -171,7 +178,9 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
     weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
 
     predicate = _build_scope_predicate(conn)
-    rows = conn.execute("SELECT sector, cpv_primary, uk_stage, published_at, first_seen_at FROM notices").fetchall()
+    rows = conn.execute(
+        "SELECT sector, cpv_primary, uk_stage, first_published_at, published_at, first_seen_at FROM notices"
+    ).fetchall()
 
     sector_buckets: dict[str, dict] = {}
     in_scope_total = _new_perf_bucket(weekdays)
@@ -345,7 +354,9 @@ def _build_source_performance(conn, now_uk: datetime) -> dict:
     Swept" figure Sector Performance shows."""
     weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
 
-    rows = conn.execute("SELECT source, published_at, first_seen_at FROM notices").fetchall()
+    rows = conn.execute(
+        "SELECT source, first_published_at, published_at, first_seen_at FROM notices"
+    ).fetchall()
 
     source_buckets: dict[str, dict] = {}
     grand_total = _new_perf_bucket(weekdays)

@@ -371,7 +371,7 @@ def opportunities():
     query = f"""
         SELECT n.id, n.ref, n.title, n.buyer, n.owner, n.sector, n.status,
                n.indicative_value, n.deadline, n.uk_stage, n.cpv_primary,
-               n.first_seen_at, n.published_at, n.source,
+               n.first_seen_at, n.first_published_at, n.published_at, n.updated_at, n.source,
                tr.headline_outcome, tr.headline_reason
         FROM notices n
         LEFT JOIN triage_runs tr ON tr.id = (

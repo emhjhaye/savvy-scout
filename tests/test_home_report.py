@@ -49,6 +49,38 @@ def _insert_notice(
     )
 
 
+def _insert_notice_with_publish_dates(
+    conn, ref: str, first_seen_at: str, first_published_at: str | None, published_at: str | None,
+) -> None:
+    """Same in-scope defaults as _insert_notice, but lets a test control
+    first_published_at/published_at independently -- for proving Sector
+    Performance/Notices by Source date by first_published_at, not the
+    source's last-updated published_at (2026-08-10 finding: an old notice
+    amended today was inflating "today"'s count)."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO notices (
+            ref, ocid, title, buyer, source, notice_type, uk_stage, status, sector, owner,
+            indicative_value, cpv_primary, cpv_primary_inferred, cpv_additional, deadline,
+            text_blob, tender_status, lot_statuses, tender_period_end, pme_due_date,
+            future_notice_date, contract_end_date, is_award, raw_json, published_at,
+            first_published_at, first_seen_at, last_swept_at, created_at, updated_at
+        ) VALUES (
+            ?, NULL, ?, ?, ?, NULL, 'UK3', 'NEW', 'Fintech', NULL,
+            NULL, '72200000', 0, NULL, NULL,
+            '', NULL, NULL, NULL, NULL,
+            NULL, NULL, 0, '{}', ?,
+            ?, ?, ?, ?, ?
+        )
+        """,
+        (
+            ref, f"Title {ref}", f"Buyer {ref}", "Find a Tender",
+            published_at, first_published_at, first_seen_at, now, now, now,
+        ),
+    )
+
+
 def _insert_triage_run(conn, ref: str, outcome: str) -> None:
     notice_id = conn.execute("SELECT id FROM notices WHERE ref = ?", (ref,)).fetchone()[0]
     now = datetime.now(timezone.utc).isoformat()
@@ -174,3 +206,57 @@ def test_overview_shows_scouting_report(tmp_path):
     assert "FLAG" in html
     assert "MAYBE" in html
     assert "FAIL" in html
+
+
+def test_amended_old_notice_does_not_inflate_todays_count(tmp_path):
+    """2026-08-10 finding: a notice first published weeks ago that gets
+    amended/awarded/cancelled today has published_at (the source's
+    last-updated timestamp) bumped to today on every re-sweep, but
+    first_published_at is set once and never touched -- so _report_date
+    must bucket it under its real, original publish date, not today.
+    Checks _build_sector_performance/_build_source_performance directly
+    (not via rendered HTML) since which weekday column "today" lands in
+    depends on what day the test happens to run."""
+    from zoneinfo import ZoneInfo
+
+    from savvy_scout.dashboard.routes.home import _build_sector_performance, _build_source_performance
+
+    db_path = str(tmp_path / "test.db")
+    setup_conn = get_connection(db_path)
+    init_db(setup_conn)
+    seed_all(setup_conn)
+
+    now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
+    today_start = now_uk.replace(hour=0, minute=0, second=0, microsecond=0)
+    three_weeks_ago = (now_uk - timedelta(days=21)).isoformat()
+
+    # First published 3 weeks ago, then amended today: published_at moved to
+    # today, first_published_at stayed pinned to the original date.
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-AMENDED",
+        first_seen_at=three_weeks_ago,
+        first_published_at=three_weeks_ago,
+        published_at=today_start.isoformat(),
+    )
+    # A genuinely new notice, published today for the first time.
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-NEW-TODAY",
+        first_seen_at=today_start.isoformat(),
+        first_published_at=today_start.isoformat(),
+        published_at=today_start.isoformat(),
+    )
+    setup_conn.commit()
+
+    sector_perf = _build_sector_performance(setup_conn, now_uk)
+    source_perf = _build_source_performance(setup_conn, now_uk)
+    setup_conn.close()
+
+    # "week" (Mon-Sun of the current week) is deterministic regardless of
+    # what day the test runs on: 3 weeks ago is never in it, today always
+    # is. If first_published_at weren't pinned, REF-AMENDED's published_at
+    # (bumped to today by the simulated amendment) would put it here too,
+    # making this 2 instead of 1.
+    swept_total_week = next(r for r in sector_perf["rows"] if r["sector"] == "Total Swept (all sources)")["week"]
+    source_week = next(r for r in source_perf["rows"] if r["sector"] == "Find a Tender")["week"]
+    assert swept_total_week == 1
+    assert source_week == 1

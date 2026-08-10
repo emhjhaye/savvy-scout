@@ -64,6 +64,14 @@ CREATE TABLE IF NOT EXISTS notices (
     is_award INTEGER NOT NULL DEFAULT 0,
     raw_json TEXT NOT NULL,
     published_at TEXT,
+    -- Set once, on first insert, and never touched again -- unlike
+    -- published_at (the source release's own "date" field, which is its
+    -- LAST-UPDATED timestamp and gets overwritten on every re-sweep, e.g.
+    -- when an old notice is amended, awarded, or cancelled). Sector
+    -- Performance/Notices by Source date the notice by this column so an
+    -- amendment to a 3-week-old notice doesn't make it look newly published
+    -- today.
+    first_published_at TEXT,
     first_seen_at TEXT NOT NULL,
     last_swept_at TEXT NOT NULL,
     created_at TEXT NOT NULL,

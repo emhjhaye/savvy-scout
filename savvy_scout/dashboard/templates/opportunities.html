@@ -136,7 +136,13 @@
         </td>
         <td class="opp-title">
           <a href="{{ url_for('queues.notice_detail', notice_id=n['id']) }}">{{ n['title'] | truncate(70, True, '…') }}</a>
-          <div class="sub">{{ n['source'] }} · Published {{ n['published_at'][:10] if n['published_at'] else 'unknown' }} · Swept {{ n['first_seen_at'][:10] if n['first_seen_at'] else '' }}</div>
+          {% set first_pub = (n['first_published_at'] or n['published_at']) %}
+          <div class="sub">
+            {{ n['source'] }} · Published {{ first_pub[:10] if first_pub else 'unknown' }} · Swept {{ n['first_seen_at'][:10] if n['first_seen_at'] else '' }}
+            {% if n['published_at'] and first_pub and n['published_at'][:10] != first_pub[:10] %}
+            <span title="This notice's source listing was re-released on {{ n['published_at'][:10] }} (amendment, award, cancellation, or other update) -- it's not newly published, just changed since it was first seen." style="color: var(--accent, #F59E0B); font-weight: 600;">· ⟲ Amended {{ n['published_at'][:10] }}</span>
+            {% endif %}
+          </div>
         </td>
         <td style="font-size: 12px; max-width: 160px; color: var(--text-muted);">{{ n['buyer'] | truncate(35, True, '…') if n['buyer'] else 'UNVERIFIED' }}</td>
         <td style="font-size: 12px; white-space: nowrap; color: var(--text-muted);">{{ n['indicative_value'] or '—' }}</td>
