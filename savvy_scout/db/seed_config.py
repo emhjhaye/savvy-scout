@@ -535,6 +535,20 @@ def seed_sources(conn: sqlite3.Connection) -> None:
             "England, below-threshold notices. Public OCDS API, no auth.",
         ),
         (
+            "Contracts Finder (CSV)",
+            "contracts_finder_csv",
+            "https://www.contractsfinder.service.gov.uk",
+            1,
+            "Same underlying site as 'Contracts Finder' above, via its own "
+            "CSV export instead of the OCDS API -- confirmed live 2026-08-10 "
+            "that several genuine, live opportunities (incl. ones syndicated "
+            "through third-party portals) are structurally absent from the "
+            "OCDS feed but present here. Runs alongside the OCDS sweep, not "
+            "instead of it; writes the same source name (\"Contracts "
+            "Finder\") into notices.source so both feeds appear as one row "
+            "on the Overview's Notices by Source table.",
+        ),
+        (
             "Public Contracts Scotland",
             "public_contracts_scotland",
             "https://api.publiccontractsscotland.gov.uk/v1",

@@ -10,6 +10,7 @@ from savvy_scout.config import Settings
 from savvy_scout.sweep.dedupe import upsert_notice
 from savvy_scout.sweep.expiry_radar import surface_if_expiring
 from savvy_scout.sources.contracts_finder import sweep_contracts_finder
+from savvy_scout.sources.contracts_finder_csv import sweep_contracts_finder_csv
 from savvy_scout.sources.etendersni import sweep_etendersni
 from savvy_scout.sources.find_a_tender import sweep_find_a_tender
 from savvy_scout.sources.public_contracts_scotland import sweep_public_contracts_scotland
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 SOURCE_REGISTRY = {
     "find_a_tender": sweep_find_a_tender,
     "contracts_finder": sweep_contracts_finder,
+    # Closes a real coverage gap (2026-08-10, see contracts_finder_csv's
+    # module docstring): notices syndicated via third-party portals are
+    # absent from Contracts Finder's OCDS feed but present in its own CSV
+    # export. Writes notices.source = "Contracts Finder" too, same as the
+    # OCDS sweep -- sweep.dedupe's fuzzy title+buyer match merges the ones
+    # both feeds see rather than duplicating them.
+    "contracts_finder_csv": sweep_contracts_finder_csv,
     "public_contracts_scotland": sweep_public_contracts_scotland,
     "sell2wales": sweep_sell2wales,
     "etendersni": sweep_etendersni,

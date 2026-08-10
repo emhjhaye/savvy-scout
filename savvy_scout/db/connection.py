@@ -187,6 +187,43 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
                     (row["id"],),
                 )
 
+    # Contracts Finder (CSV) source (2026-08-10) -- see seed_sources for the
+    # full rationale; seed_sources only inserts config_sources rows on an
+    # empty table, so an already-seeded production DB needs this added
+    # explicitly rather than picking it up from seed_sources on next boot.
+    # Guarded on the table being non-empty (already seeded) -- a genuinely
+    # fresh database must go through seed_sources for ALL rows (this one
+    # included, already added there), or inserting just this one row here
+    # first would make the table look non-empty and seed_sources would then
+    # skip seeding the other 5 default sources entirely.
+    config_sources_seeded = conn.execute("SELECT 1 FROM config_sources LIMIT 1").fetchone() is not None
+    existing_csv_source = conn.execute(
+        "SELECT 1 FROM config_sources WHERE source_type = 'contracts_finder_csv'"
+    ).fetchone()
+    if config_sources_seeded and existing_csv_source is None:
+        from datetime import datetime, timezone
+
+        conn.execute(
+            "INSERT INTO config_sources (name, source_type, base_url, enabled, notes, updated_at, updated_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                "Contracts Finder (CSV)",
+                "contracts_finder_csv",
+                "https://www.contractsfinder.service.gov.uk",
+                1,
+                "Same underlying site as 'Contracts Finder' above, via its own CSV "
+                "export instead of the OCDS API -- confirmed live 2026-08-10 that "
+                "several genuine, live opportunities (incl. ones syndicated through "
+                "third-party portals) are structurally absent from the OCDS feed "
+                "but present here. Runs alongside the OCDS sweep, not instead of "
+                "it; writes the same source name (\"Contracts Finder\") into "
+                "notices.source so both feeds appear as one row on the Overview's "
+                "Notices by Source table.",
+                datetime.now(timezone.utc).isoformat(),
+                "system_migration",
+            ),
+        )
+
     # Internal Addendum sections C-F (2026-08-09) -- see schema.sql's comment
     # on phase2_assessments. All nullable; existing assessments just don't
     # have them until re-run.
