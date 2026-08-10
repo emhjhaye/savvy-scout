@@ -102,14 +102,21 @@
         <div class="meta-value">{{ notice['first_seen_at'][:10] if notice['first_seen_at'] else '—' }}</div>
       </div>
       <div class="meta-item">
-        {% set first_pub = (notice['first_published_at'] or notice['published_at']) %}
         <div class="meta-label">Published</div>
         <div class="meta-value">
+          {% if notice['publish_date_unknown'] %}
+          Unconfirmed
+          <div style="margin-top: 4px; font-size: 12px; color: var(--text-muted);" title="First seen via an award, contract, amendment, or termination notice rather than the original tender/planning notice -- that kind of release carries no publish date for the underlying opportunity.">
+            First seen via an award/update notice, not the original tender
+          </div>
+          {% else %}
+          {% set first_pub = (notice['first_published_at'] or notice['published_at']) %}
           {{ first_pub[:10] if first_pub else '—' }}
           {% if notice['published_at'] and first_pub and notice['published_at'][:10] != first_pub[:10] %}
           <div style="margin-top: 4px; font-size: 12px; color: var(--accent, #F59E0B); font-weight: 600;" title="This notice's source listing was re-released on {{ notice['published_at'][:10] }} (amendment, award, cancellation, or other update since it was first seen).">
             ⟲ Amended {{ notice['published_at'][:10] }}
           </div>
+          {% endif %}
           {% endif %}
         </div>
       </div>

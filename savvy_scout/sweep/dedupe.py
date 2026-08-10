@@ -85,7 +85,7 @@ def _insert_notice(conn, notice, parsed, cpv_additional_json, lot_statuses_json,
         f"{', '.join(additional_cols)}, "
         "text_blob, tender_status, lot_statuses, tender_period_end, pme_due_date, "
         "future_notice_date, contract_end_date, is_award, raw_json, published_at, "
-        "first_published_at, first_seen_at, last_swept_at, created_at, updated_at"
+        "first_published_at, publish_date_unknown, first_seen_at, last_swept_at, created_at, updated_at"
     )
     num_columns = len(columns.split(","))
     cursor = conn.execute(
@@ -124,7 +124,8 @@ def _insert_notice(conn, notice, parsed, cpv_additional_json, lot_statuses_json,
             int(parsed.is_award),
             notice.raw_json,
             notice.published_at,
-            notice.published_at,
+            notice.published_at if parsed.is_publish_event else None,
+            int(not parsed.is_publish_event),
             now,
             now,
             now,
@@ -165,6 +166,18 @@ def upsert_notice(conn: sqlite3.Connection, parsed: ParsedNotice, actor: str = "
 
     notice_id = existing["id"]
     match_kind = "exact ref match" if existing["ref"] == notice.ref else "fuzzy title/buyer match"
+
+    # Don't regress notice_type/uk_stage to unknown (2026-08-10): an award/
+    # contract/termination release carries no notice document at all (see
+    # ParsedNotice.is_publish_event), so notice.notice_type is None here --
+    # but the notice may already have a real UK1-4 stage from an earlier
+    # release. Overwriting it with None/UNVERIFIED would silently drop an
+    # already-flagged or Victoria-approved notice out of every in-scope
+    # view (Opportunities, owner queues, Approved) the moment it's awarded.
+    # Only take the new value when this release actually provided one.
+    effective_notice_type = notice.notice_type if notice.notice_type is not None else existing["notice_type"]
+    effective_uk_stage = notice.uk_stage if notice.notice_type is not None else existing["uk_stage"]
+
     additional_cols = ["above_threshold"] + _ADDITIONAL_FIELDS
     conn.execute(
         "UPDATE notices SET "
@@ -182,8 +195,8 @@ def upsert_notice(conn: sqlite3.Connection, parsed: ParsedNotice, actor: str = "
             notice.ocid,
             notice.title,
             notice.buyer,
-            notice.notice_type,
-            notice.uk_stage,
+            effective_notice_type,
+            effective_uk_stage,
             notice.indicative_value,
             notice.cpv_primary,
             int(notice.cpv_primary_inferred),
@@ -215,6 +228,22 @@ def upsert_notice(conn: sqlite3.Connection, parsed: ParsedNotice, actor: str = "
         ),
     )
     conn.commit()
+
+    # Self-heal (2026-08-10): this notice was first discovered via an
+    # award/contract/amendment/termination release with no reliable publish
+    # date -- if THIS update's release is an actual tender/planning notice,
+    # we finally have one, so record it instead of leaving the notice
+    # permanently excluded from date-based reporting. Deliberately does
+    # nothing in the far more common reverse case (a known-good notice later
+    # gets an award update) -- first_published_at above already isn't in
+    # that UPDATE's SET list, so it stays untouched either way.
+    if existing["publish_date_unknown"] and parsed.is_publish_event:
+        conn.execute(
+            "UPDATE notices SET first_published_at = ?, publish_date_unknown = 0 WHERE id = ?",
+            (notice.published_at, notice_id),
+        )
+        conn.commit()
+
     log_audit(
         conn,
         "notice",

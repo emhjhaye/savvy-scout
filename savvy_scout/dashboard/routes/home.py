@@ -87,7 +87,19 @@ def _report_date(row):
     first_published_at, a 3-week-old notice amended/awarded/cancelled today
     would silently look newly published today (2026-08-10 finding). Never
     first_seen_at by default -- that's when OUR sweep found it, not when the
-    buyer actually published it."""
+    buyer actually published it.
+
+    publish_date_unknown (2026-08-10, same day, second finding) short-
+    circuits all of that to None -- excluded from every date bucket
+    entirely. Set when we first discovered this notice via an award,
+    contract, amendment, or termination release rather than an actual
+    tender/planning notice: that release carries no reliable publish date
+    anywhere in its payload, so published_at/first_seen_at would both just
+    silently be "today" (the day WE happened to first see it), same failure
+    as the first finding just via a different path -- see sweep.dedupe and
+    sources.ocds_parser.ParsedNotice.is_publish_event."""
+    if row["publish_date_unknown"]:
+        return None
     dt = (
         _to_london_datetime(row["first_published_at"])
         or _to_london_datetime(row["published_at"])
@@ -179,7 +191,8 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
 
     predicate = _build_scope_predicate(conn)
     rows = conn.execute(
-        "SELECT sector, cpv_primary, uk_stage, first_published_at, published_at, first_seen_at FROM notices"
+        "SELECT sector, cpv_primary, uk_stage, first_published_at, published_at, "
+        "first_seen_at, publish_date_unknown FROM notices"
     ).fetchall()
 
     sector_buckets: dict[str, dict] = {}
@@ -355,7 +368,7 @@ def _build_source_performance(conn, now_uk: datetime) -> dict:
     weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
 
     rows = conn.execute(
-        "SELECT source, first_published_at, published_at, first_seen_at FROM notices"
+        "SELECT source, first_published_at, published_at, first_seen_at, publish_date_unknown FROM notices"
     ).fetchall()
 
     source_buckets: dict[str, dict] = {}

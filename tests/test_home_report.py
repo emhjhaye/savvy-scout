@@ -51,12 +51,16 @@ def _insert_notice(
 
 def _insert_notice_with_publish_dates(
     conn, ref: str, first_seen_at: str, first_published_at: str | None, published_at: str | None,
+    publish_date_unknown: int = 0,
 ) -> None:
     """Same in-scope defaults as _insert_notice, but lets a test control
-    first_published_at/published_at independently -- for proving Sector
-    Performance/Notices by Source date by first_published_at, not the
-    source's last-updated published_at (2026-08-10 finding: an old notice
-    amended today was inflating "today"'s count)."""
+    first_published_at/published_at/publish_date_unknown independently --
+    for proving Sector Performance/Notices by Source date by
+    first_published_at, not the source's last-updated published_at
+    (2026-08-10 finding: an old notice amended today was inflating "today"'s
+    count), and exclude publish_date_unknown notices entirely (2026-08-10
+    finding #2: a notice first discovered via an award/update release has
+    no reliable publish date at all)."""
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         """
@@ -65,18 +69,18 @@ def _insert_notice_with_publish_dates(
             indicative_value, cpv_primary, cpv_primary_inferred, cpv_additional, deadline,
             text_blob, tender_status, lot_statuses, tender_period_end, pme_due_date,
             future_notice_date, contract_end_date, is_award, raw_json, published_at,
-            first_published_at, first_seen_at, last_swept_at, created_at, updated_at
+            first_published_at, publish_date_unknown, first_seen_at, last_swept_at, created_at, updated_at
         ) VALUES (
             ?, NULL, ?, ?, ?, NULL, 'UK3', 'NEW', 'Fintech', NULL,
             NULL, '72200000', 0, NULL, NULL,
             '', NULL, NULL, NULL, NULL,
             NULL, NULL, 0, '{}', ?,
-            ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?
         )
         """,
         (
             ref, f"Title {ref}", f"Buyer {ref}", "Find a Tender",
-            published_at, first_published_at, first_seen_at, now, now, now,
+            published_at, first_published_at, publish_date_unknown, first_seen_at, now, now, now,
         ),
     )
 
@@ -256,6 +260,55 @@ def test_amended_old_notice_does_not_inflate_todays_count(tmp_path):
     # is. If first_published_at weren't pinned, REF-AMENDED's published_at
     # (bumped to today by the simulated amendment) would put it here too,
     # making this 2 instead of 1.
+    swept_total_week = next(r for r in sector_perf["rows"] if r["sector"] == "Total Swept (all sources)")["week"]
+    source_week = next(r for r in source_perf["rows"] if r["sector"] == "Find a Tender")["week"]
+    assert swept_total_week == 1
+    assert source_week == 1
+
+
+def test_award_only_discovery_excluded_from_every_date_bucket(tmp_path):
+    """2026-08-10 finding #2: a notice first discovered via an award/
+    contract/amendment/termination release (publish_date_unknown=1) has no
+    reliable publish date anywhere in that release's payload -- it must be
+    excluded from Sector Performance/Notices by Source date buckets
+    entirely (not counted under "today" via the published_at/first_seen_at
+    fallback, which would repeat finding #1's mistake through a different
+    path), while a genuinely new notice published today still counts."""
+    from zoneinfo import ZoneInfo
+
+    from savvy_scout.dashboard.routes.home import _build_sector_performance, _build_source_performance
+
+    db_path = str(tmp_path / "test.db")
+    setup_conn = get_connection(db_path)
+    init_db(setup_conn)
+    seed_all(setup_conn)
+
+    now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
+    today_start = now_uk.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Discovered today via an award-only release: published_at and
+    # first_seen_at are both "today", but publish_date_unknown says don't
+    # trust either for date-based reporting.
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-AWARD-ONLY",
+        first_seen_at=today_start.isoformat(),
+        first_published_at=None,
+        published_at=today_start.isoformat(),
+        publish_date_unknown=1,
+    )
+    # A genuinely new notice, published today for the first time.
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-NEW-TODAY",
+        first_seen_at=today_start.isoformat(),
+        first_published_at=today_start.isoformat(),
+        published_at=today_start.isoformat(),
+    )
+    setup_conn.commit()
+
+    sector_perf = _build_sector_performance(setup_conn, now_uk)
+    source_perf = _build_source_performance(setup_conn, now_uk)
+    setup_conn.close()
+
     swept_total_week = next(r for r in sector_perf["rows"] if r["sector"] == "Total Swept (all sources)")["week"]
     source_week = next(r for r in source_perf["rows"] if r["sector"] == "Find a Tender")["week"]
     assert swept_total_week == 1

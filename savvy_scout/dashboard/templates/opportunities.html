@@ -136,11 +136,15 @@
         </td>
         <td class="opp-title">
           <a href="{{ url_for('queues.notice_detail', notice_id=n['id']) }}">{{ n['title'] | truncate(70, True, '…') }}</a>
-          {% set first_pub = (n['first_published_at'] or n['published_at']) %}
           <div class="sub">
+            {% if n['publish_date_unknown'] %}
+            {{ n['source'] }} · Published date unconfirmed (first seen via an award/update notice, not the original tender) · Swept {{ n['first_seen_at'][:10] if n['first_seen_at'] else '' }}
+            {% else %}
+            {% set first_pub = (n['first_published_at'] or n['published_at']) %}
             {{ n['source'] }} · Published {{ first_pub[:10] if first_pub else 'unknown' }} · Swept {{ n['first_seen_at'][:10] if n['first_seen_at'] else '' }}
             {% if n['published_at'] and first_pub and n['published_at'][:10] != first_pub[:10] %}
             <span title="This notice's source listing was re-released on {{ n['published_at'][:10] }} (amendment, award, cancellation, or other update) -- it's not newly published, just changed since it was first seen." style="color: var(--accent, #F59E0B); font-weight: 600;">· ⟲ Amended {{ n['published_at'][:10] }}</span>
+            {% endif %}
             {% endif %}
           </div>
         </td>

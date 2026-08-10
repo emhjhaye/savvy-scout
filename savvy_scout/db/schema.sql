@@ -72,6 +72,16 @@ CREATE TABLE IF NOT EXISTS notices (
     -- amendment to a 3-week-old notice doesn't make it look newly published
     -- today.
     first_published_at TEXT,
+    -- Set at first insert when the release that introduced us to this
+    -- notice carried no reliable evidence of an original publish date --
+    -- an award, contract, amendment, or termination release, as opposed to
+    -- an actual tender/planning notice (2026-08-10: confirmed an
+    -- award-only release has no tenderPeriod or notice documents at all).
+    -- When true, first_published_at is left NULL and Sector
+    -- Performance/Notices by Source exclude the notice from every date
+    -- bucket entirely rather than mis-dating it as "published today"
+    -- (the day WE happened to first see it).
+    publish_date_unknown INTEGER NOT NULL DEFAULT 0,
     first_seen_at TEXT NOT NULL,
     last_swept_at TEXT NOT NULL,
     created_at TEXT NOT NULL,

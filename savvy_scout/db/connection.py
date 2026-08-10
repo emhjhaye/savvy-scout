@@ -157,6 +157,36 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE notices ADD COLUMN first_published_at TEXT")
         conn.execute("UPDATE notices SET first_published_at = published_at WHERE first_published_at IS NULL")
 
+    # publish_date_unknown (2026-08-10): a second finding the same day as
+    # first_published_at above -- a notice we discover for the very first
+    # time via an award/contract/amendment/termination release (rather than
+    # an actual tender/planning notice) has no reliable publish date
+    # anywhere in that release's payload, so first_published_at was still
+    # wrongly getting stamped with "today" for those. Re-parses each
+    # existing row's already-stored raw_json (same backfill pattern as
+    # published_at above) to find its real OCDS tag and correct any rows
+    # already wrongly stamped by the two sweeps that ran between deploying
+    # first_published_at and this fix.
+    notice_cols_now = [r[1] for r in conn.execute("PRAGMA table_info(notices)").fetchall()]
+    if "publish_date_unknown" not in notice_cols_now:
+        import json as _json
+
+        conn.execute("ALTER TABLE notices ADD COLUMN publish_date_unknown INTEGER NOT NULL DEFAULT 0")
+        rows_to_check = conn.execute(
+            "SELECT id, raw_json FROM notices WHERE raw_json IS NOT NULL AND raw_json != ''"
+        ).fetchall()
+        for row in rows_to_check:
+            try:
+                release = _json.loads(row["raw_json"])
+            except ValueError:
+                continue
+            tags = release.get("tag", []) or []
+            if not (set(tags) & {"tender", "planning"}):
+                conn.execute(
+                    "UPDATE notices SET publish_date_unknown = 1, first_published_at = NULL WHERE id = ?",
+                    (row["id"],),
+                )
+
     # Internal Addendum sections C-F (2026-08-09) -- see schema.sql's comment
     # on phase2_assessments. All nullable; existing assessments just don't
     # have them until re-run.

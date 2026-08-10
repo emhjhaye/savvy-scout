@@ -16,6 +16,16 @@ from savvy_scout.models.notice import Notice
 UK_STAGE_PATTERN = re.compile(r"^UK[1-5]$")
 
 
+#: OCDS release tags that actually represent an opportunity being published
+#: (a new tender, or its earlier planning notice) -- as opposed to award,
+#: contract, amendment, or termination releases, which record something
+#: happening to an ALREADY-published tender and carry no reliable trace of
+#: when that tender was first published (2026-08-10 finding: an award-only
+#: release has no tenderPeriod or notice documents at all, so there is no
+#: usable original-publish date anywhere in its payload).
+_PUBLISH_EVENT_TAGS = frozenset({"tender", "planning"})
+
+
 @dataclass
 class ParsedNotice:
     notice: Notice
@@ -27,6 +37,7 @@ class ParsedNotice:
     future_notice_date: str | None = None
     contract_end_date: str | None = None
     is_award: bool = False
+    is_publish_event: bool = False
 
 
 def _find_buyer_name(release: dict) -> str | None:
@@ -399,6 +410,7 @@ def parse_release(release: dict, source: str) -> ParsedNotice:
         future_notice_date=(tender.get("communication") or {}).get("futureNoticeDate"),
         contract_end_date=contract_end_date,
         is_award=("award" in tags) or bool(release.get("awards")),
+        is_publish_event=bool(set(tags) & _PUBLISH_EVENT_TAGS),
     )
 
 
