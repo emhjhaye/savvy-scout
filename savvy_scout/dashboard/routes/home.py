@@ -27,7 +27,12 @@ from savvy_scout.sweep.runner import get_recent_sweep_runs, run_sweep
 home_bp = Blueprint("home", __name__)
 
 LONDON = ZoneInfo("Europe/London")
-WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+# Full week, not just Mon-Fri (2026-08-10): the daily sweep has no
+# day_of_week restriction and already runs every day (see scheduler.py),
+# and government sources do publish notices over the weekend -- confirmed
+# live the same day when a Sunday-published notice was invisible in every
+# day column despite correctly counting in This Week/This Month/YTD.
+WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # Shared colour language for the Overview page's pie/donut charts -- the
 # same colours are used for the legend swatches and the CSS conic-gradient
@@ -163,13 +168,16 @@ def _perf_row(label, bucket, weekdays, **extra):
 
 
 def _perf_windows(now_uk: datetime):
-    """Shared Mon-Fri-this-week + week/month/YTD window boundaries for every
+    """Shared Mon-Sun-this-week + week/month/YTD window boundaries for every
     Overview performance table (Sector, Source, ...), so they all report
-    against the exact same date ranges."""
+    against the exact same date ranges. Full 7-day week, not just Mon-Fri
+    (2026-08-10) -- the sweep runs every day and sources do publish notices
+    on weekends, so a Sat/Sun notice needs its own day column too instead of
+    only counting in the week/month/YTD rollups."""
     today = now_uk.date()
     week_start = today - timedelta(days=now_uk.weekday())
     week_end = week_start + timedelta(days=6)
-    weekdays = [week_start + timedelta(days=i) for i in range(5)]
+    weekdays = [week_start + timedelta(days=i) for i in range(7)]
     month_start = today.replace(day=1)
     year_start = today.replace(month=1, day=1)
     return weekdays, week_start, week_end, month_start, year_start
@@ -181,7 +189,7 @@ def _day_headers(weekdays):
 
 def _build_sector_performance(conn, now_uk: datetime) -> dict:
     """Sector Performance (2026-08-09): per-sector opportunity counts for
-    Mon-Fri of the CURRENT week, then This Week/This Month/YTD, dated by
+    Mon-Sun of the CURRENT week, then This Week/This Month/YTD, dated by
     publication date (not sweep date). Two grand-total rows are appended:
     "In Sector" (sum of the per-sector rows above, i.e. what in_scope_filter_sql
     also counts) and "Total Swept" (every notice pulled, matched to a sector
@@ -361,7 +369,7 @@ def _build_source_performance(conn, now_uk: datetime) -> dict:
     """Notices by Source (2026-08-09): where each swept notice actually came
     from (Find a Tender, Contracts Finder, Public Contracts Scotland,
     Sell2Wales, eTendersNI -- see sources/ and config_sources), same
-    Mon-Fri/week/month/YTD shape as Sector Performance, dated by publication
+    Mon-Sun/week/month/YTD shape as Sector Performance, dated by publication
     date. Unfiltered by sector/CPV scope -- this is about sweep coverage per
     source, not what's in scope, so it should total to the same "Total
     Swept" figure Sector Performance shows."""

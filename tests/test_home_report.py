@@ -266,6 +266,47 @@ def test_amended_old_notice_does_not_inflate_todays_count(tmp_path):
     assert source_week == 1
 
 
+def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
+    """2026-08-10 finding #4: a notice genuinely published on a Sunday was
+    invisible in every day column of Sector Performance/Notices by Source,
+    since those tables only had Mon-Fri columns even though the daily sweep
+    has no day_of_week restriction and sources do publish on weekends. Now
+    a full Mon-Sun week, so the notice's real publish day shows up."""
+    from zoneinfo import ZoneInfo
+
+    from savvy_scout.dashboard.routes.home import _build_sector_performance, _build_source_performance, _perf_windows
+
+    db_path = str(tmp_path / "test.db")
+    setup_conn = get_connection(db_path)
+    init_db(setup_conn)
+    seed_all(setup_conn)
+
+    now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
+    weekdays, week_start, _, _, _ = _perf_windows(now_uk)
+    sunday = weekdays[6]
+
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-SUNDAY",
+        first_seen_at=now_uk.isoformat(),
+        first_published_at=datetime.combine(sunday, datetime.min.time(), tzinfo=now_uk.tzinfo).isoformat(),
+        published_at=datetime.combine(sunday, datetime.min.time(), tzinfo=now_uk.tzinfo).isoformat(),
+    )
+    setup_conn.commit()
+
+    sector_perf = _build_sector_performance(setup_conn, now_uk)
+    source_perf = _build_source_performance(setup_conn, now_uk)
+    setup_conn.close()
+
+    assert [d["label"] for d in sector_perf["day_headers"]] == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    swept_total_row = next(r for r in sector_perf["rows"] if r["sector"] == "Total Swept (all sources)")
+    source_row = next(r for r in source_perf["rows"] if r["sector"] == "Find a Tender")
+    assert swept_total_row["days"][6] == 1  # Sunday column
+    assert swept_total_row["days"][:6] == [0, 0, 0, 0, 0, 0]
+    assert source_row["days"][6] == 1
+    assert swept_total_row["week"] == 1
+
+
 def test_award_only_discovery_excluded_from_every_date_bucket(tmp_path):
     """2026-08-10 finding #2: a notice first discovered via an award/
     contract/amendment/termination release (publish_date_unknown=1) has no
