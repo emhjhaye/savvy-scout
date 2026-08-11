@@ -36,7 +36,12 @@ from savvy_scout.notifications import (
     send_new_opportunity_email,
     send_new_opportunity_teams_message,
 )
-from savvy_scout.triage.sector_classifier import classify_sector, is_contested, uncoupled_candidate_sectors
+from savvy_scout.triage.sector_classifier import (
+    classify_sector,
+    contains_keyword,
+    is_contested,
+    uncoupled_candidate_sectors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +93,7 @@ def _extract_numeric_value(indicative_value: str | None) -> float | None:
 
 def _is_airport_or_defence_aviation(buyer: str | None, text_blob: str) -> bool:
     haystack = f"{(buyer or '').lower()}\n{text_blob.lower()}"
-    return any(term in haystack for term in AIRPORT_TERMS)
+    return any(contains_keyword(haystack, term) for term in AIRPORT_TERMS)
 
 
 def gate1_sector_owner(conn: sqlite3.Connection, buyer: str | None, text_blob: str) -> GateResult:
@@ -169,12 +174,15 @@ def gate2_type_of_work(
 
     terms = conn.execute("SELECT term, category FROM config_gate2_terms").fetchall()
 
-    fail_matches = [t["term"] for t in terms if t["category"] == "fail" and t["term"] in text_blob]
+    fail_matches = [
+        t["term"] for t in terms if t["category"] == "fail" and contains_keyword(text_blob, t["term"])
+    ]
     if fail_matches:
         return GateResult("FAIL", f"Matched fail term(s): {', '.join(fail_matches)}.")
 
     pass_matches = [
-        t["term"] for t in terms if t["category"] == "unconditional_pass" and t["term"] in text_blob
+        t["term"] for t in terms
+        if t["category"] == "unconditional_pass" and contains_keyword(text_blob, t["term"])
     ]
     base_outcome = "FLAG"
     base_reason = "No Gate 2 keyword matched (pass, fail or generic); type of work unclear, do not rate."
@@ -184,11 +192,12 @@ def gate2_type_of_work(
         base_reason = f"Matched unconditional pass term(s): {', '.join(pass_matches)}."
 
     generic_matches = [
-        t["term"] for t in terms if t["category"] == "generic_needs_coupling" and t["term"] in text_blob
+        t["term"] for t in terms
+        if t["category"] == "generic_needs_coupling" and contains_keyword(text_blob, t["term"])
     ]
     if generic_matches:
         coupling_rows = conn.execute("SELECT term FROM config_coupling_terms").fetchall()
-        coupled_terms = [r["term"] for r in coupling_rows if r["term"] in text_blob]
+        coupled_terms = [r["term"] for r in coupling_rows if contains_keyword(text_blob, r["term"])]
         if coupled_terms:
             base_outcome = "PASS"
             base_reason = (
@@ -256,15 +265,20 @@ def gate3_notice_stage(uk_stage: str) -> GateResult:
 def gate5_framework(conn: sqlite3.Connection, text_blob: str, uk_stage: str) -> GateResult:
     keywords = conn.execute("SELECT term, category FROM config_framework_keywords").fetchall()
 
-    call_off_matches = [k["term"] for k in keywords if k["category"] == "call_off" and k["term"] in text_blob]
-    establishment_matches = [
-        k["term"] for k in keywords if k["category"] == "establishment" and k["term"] in text_blob
+    call_off_matches = [
+        k["term"] for k in keywords if k["category"] == "call_off" and contains_keyword(text_blob, k["term"])
     ]
-    direct_matches = [k["term"] for k in keywords if k["category"] == "direct" and k["term"] in text_blob]
+    establishment_matches = [
+        k["term"] for k in keywords
+        if k["category"] == "establishment" and contains_keyword(text_blob, k["term"])
+    ]
+    direct_matches = [
+        k["term"] for k in keywords if k["category"] == "direct" and contains_keyword(text_blob, k["term"])
+    ]
 
     if call_off_matches:
         frameworks = conn.execute("SELECT framework_name FROM config_trifork_frameworks").fetchall()
-        on_framework = any(f["framework_name"].lower() in text_blob for f in frameworks)
+        on_framework = any(contains_keyword(text_blob, f["framework_name"]) for f in frameworks)
         if on_framework:
             return GateResult(
                 "PASS",
@@ -391,7 +405,7 @@ def _lookup_cpv(conn: sqlite3.Connection, code: str, text_blob: str) -> tuple[st
     ).fetchall()
     for row in exact_rows:
         if row["condition_keyword"]:
-            if row["condition_keyword"].lower() in text_blob:
+            if contains_keyword(text_blob, row["condition_keyword"]):
                 return row["list_type"], (row["notes"] or "exact CPV match, condition met")
             continue
         return row["list_type"], (row["notes"] or "exact CPV list match")
@@ -419,7 +433,7 @@ def filter3_scale(conn: sqlite3.Connection, indicative_value: str | None, text_b
         )
 
     si_primes = json.loads(config["si_prime_suppliers"])
-    matched_primes = [p for p in si_primes if p.lower() in text_blob]
+    matched_primes = [p for p in si_primes if contains_keyword(text_blob, p)]
     if matched_primes:
         return GateResult(
             "FAIL",

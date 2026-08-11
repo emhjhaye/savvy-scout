@@ -224,6 +224,18 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             ),
         )
 
+    # "health"/"hospital" no longer unconditional identity matches
+    # (2026-08-10) -- see seed_config.SECTOR_KEYWORDS's comment on this.
+    # A plain UPDATE, safe to run on every boot: a no-op once already
+    # applied, and a no-op on a genuinely fresh DB where seed_sources
+    # inserts the corrected category directly and this WHERE simply
+    # matches nothing yet.
+    conn.execute(
+        "UPDATE config_sector_keywords SET category = 'generic_needs_coupling' "
+        "WHERE sector = 'NHS and Healthcare' AND keyword IN ('health', 'hospital') "
+        "AND category = 'identity'"
+    )
+
     # Internal Addendum sections C-F (2026-08-09) -- see schema.sql's comment
     # on phase2_assessments. All nullable; existing assessments just don't
     # have them until re-run.

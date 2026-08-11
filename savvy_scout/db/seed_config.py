@@ -57,9 +57,20 @@ SECTOR_KEYWORDS = [
         # council, government), but that sector's activation is an open question
         # for Kanvesh (see README), not a code decision -- left as unconditional
         # 'identity' matches, unchanged, until that's resolved.
+        #
+        # "health"/"hospital" are the exception (2026-08-10, explicit
+        # request): confirmed live these are far too generic to be
+        # unconditional identity matches -- ordinary council social-care
+        # tenders routinely mention "health and wellbeing" outcomes with
+        # nothing to do with the NHS, and were getting wrongly contested
+        # against a genuine council identity match as a result. Moved to
+        # generic_needs_coupling, same as every other sector's bare
+        # industry words (Energy's "energy", Fintech's "payments", etc.) --
+        # "nhs"/"clinical commissioning"/"integrated care board"/
+        # "foundation trust" stay identity since they're genuinely specific.
         ("NHS and Healthcare", "nhs", IDENTITY),
-        ("NHS and Healthcare", "health", IDENTITY),
-        ("NHS and Healthcare", "hospital", IDENTITY),
+        ("NHS and Healthcare", "health", GENERIC),
+        ("NHS and Healthcare", "hospital", GENERIC),
         ("NHS and Healthcare", "clinical commissioning", IDENTITY),
         ("NHS and Healthcare", "integrated care board", IDENTITY),
         ("NHS and Healthcare", "foundation trust", IDENTITY),
