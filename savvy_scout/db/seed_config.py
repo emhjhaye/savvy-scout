@@ -83,6 +83,36 @@ SECTOR_KEYWORDS = [
         ("Central and Local Government", "county council", IDENTITY),
         ("Central and Local Government", "city council", IDENTITY),
         ("Central and Local Government", "government", IDENTITY),
+        # National government departments/agencies and housing associations
+        # (2026-08-10, explicit request, following a manual-vs-app audit):
+        # confirmed unmatched live on 10 August's real notices -- "Central
+        # and Local Government" is meant to cover the national/central tier
+        # too, not just local councils, and housing associations deliver
+        # public housing services closely enough to count as in scope.
+        # Specific named buyers below are the ones actually observed; the
+        # two generic phrases ("housing association"/"housing group") are
+        # for coverage of ones not yet seen, same specificity level as
+        # "foundation trust"/"clinical commissioning" elsewhere.
+        ("Central and Local Government", "foreign, commonwealth and development office", IDENTITY),
+        ("Central and Local Government", "house of commons", IDENTITY),
+        ("Central and Local Government", "chief constable", IDENTITY),
+        ("Central and Local Government", "police and crime commissioner", IDENTITY),
+        ("Central and Local Government", "pension protection fund", IDENTITY),
+        ("Central and Local Government", "natural england", IDENTITY),
+        ("Central and Local Government", "forestry and land scotland", IDENTITY),
+        ("Central and Local Government", "commonalty and citizens of the city of london", IDENTITY),
+        ("Central and Local Government", "combined authority", IDENTITY),
+        ("Central and Local Government", "development corporation", IDENTITY),
+        ("Central and Local Government", "housing association", IDENTITY),
+        ("Central and Local Government", "housing group", IDENTITY),
+        ("Central and Local Government", "framework housing association", IDENTITY),
+        ("Central and Local Government", "great places housing group", IDENTITY),
+        ("Central and Local Government", "salvation army housing association", IDENTITY),
+        ("Central and Local Government", "southdown housing association", IDENTITY),
+        ("Central and Local Government", "valleys to coast housing", IDENTITY),
+        ("Central and Local Government", "your housing group", IDENTITY),
+        ("Central and Local Government", "riverside group", IDENTITY),
+        ("Central and Local Government", "be one homes", IDENTITY),
         # Bare industry vocabulary: matches non-IT work too (an EPA payments
         # notice, a "food bank" mention) so it needs a product/capability
         # coupling term from config_coupling_terms to count. 2026-07-20, after
@@ -163,6 +193,8 @@ SECTOR_KEYWORDS = [
         ("Energy", "utilities", GENERIC),
         ("Energy", "electricity", GENERIC),
         ("Energy", "national grid", IDENTITY),
+        # Confirmed unmatched live 2026-08-10 -- nuclear power station project.
+        ("Energy", "sizewell c", IDENTITY),
         ("Energy", "ofgem", IDENTITY),
         ("Energy", "smart meter", IDENTITY),
         ("Energy", "power distribution", IDENTITY),

@@ -224,6 +224,49 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             ),
         )
 
+    # National government departments/agencies + housing associations added
+    # to Central and Local Government, and Sizewell C added to Energy
+    # (2026-08-10, explicit request after a manual-vs-app audit) -- see
+    # SECTOR_KEYWORDS' comment on the same rows; that only seeds a fresh DB,
+    # so an already-seeded production DB needs these inserted explicitly.
+    # Guarded on the table being non-empty already, same reason as the
+    # config_sources fix above: inserting into a genuinely EMPTY table here
+    # first would make seed_keywords' "if not _table_empty: return" guard
+    # skip seeding every other base keyword (council, nhs, energy, ...).
+    sector_keywords_seeded = conn.execute("SELECT 1 FROM config_sector_keywords LIMIT 1").fetchone() is not None
+    new_keyword_rows = [] if not sector_keywords_seeded else [
+        ("Central and Local Government", "foreign, commonwealth and development office", "identity"),
+        ("Central and Local Government", "house of commons", "identity"),
+        ("Central and Local Government", "chief constable", "identity"),
+        ("Central and Local Government", "police and crime commissioner", "identity"),
+        ("Central and Local Government", "pension protection fund", "identity"),
+        ("Central and Local Government", "natural england", "identity"),
+        ("Central and Local Government", "forestry and land scotland", "identity"),
+        ("Central and Local Government", "commonalty and citizens of the city of london", "identity"),
+        ("Central and Local Government", "combined authority", "identity"),
+        ("Central and Local Government", "development corporation", "identity"),
+        ("Central and Local Government", "housing association", "identity"),
+        ("Central and Local Government", "housing group", "identity"),
+        ("Central and Local Government", "framework housing association", "identity"),
+        ("Central and Local Government", "great places housing group", "identity"),
+        ("Central and Local Government", "salvation army housing association", "identity"),
+        ("Central and Local Government", "southdown housing association", "identity"),
+        ("Central and Local Government", "valleys to coast housing", "identity"),
+        ("Central and Local Government", "your housing group", "identity"),
+        ("Central and Local Government", "riverside group", "identity"),
+        ("Central and Local Government", "be one homes", "identity"),
+        ("Energy", "sizewell c", "identity"),
+    ]
+    for sector, keyword, category in new_keyword_rows:
+        exists = conn.execute(
+            "SELECT 1 FROM config_sector_keywords WHERE sector = ? AND keyword = ?", (sector, keyword)
+        ).fetchone()
+        if exists is None:
+            conn.execute(
+                "INSERT INTO config_sector_keywords (sector, keyword, category) VALUES (?, ?, ?)",
+                (sector, keyword, category),
+            )
+
     # "health"/"hospital" no longer unconditional identity matches
     # (2026-08-10) -- see seed_config.SECTOR_KEYWORDS's comment on this.
     # A plain UPDATE, safe to run on every boot: a no-op once already

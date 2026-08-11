@@ -100,14 +100,26 @@ def test_uncoupled_generic_keyword_with_no_identity_still_flagged_as_candidate(c
     assert "Energy" in uncoupled_candidate_sectors(conn, buyer, text_blob)
 
 
-def test_natural_england_type_buyer_has_no_keyword_match_at_all(conn):
-    """Confirmed live 2026-08-10: arm's-length bodies/agencies without
-    council/government/ministry-style wording in their name aren't
-    covered by any current sector or Central/Local Government keyword --
-    a real, separate coverage gap from the contested-matching fix above."""
+def test_natural_england_now_matches_after_keyword_coverage_expansion(conn):
+    """2026-08-10, explicit request following the manual-vs-app audit:
+    national government agencies like Natural England had no keyword
+    coverage at all -- added as an identity keyword for Central and Local
+    Government (that sector is meant to cover the national/central tier,
+    not just local councils)."""
     buyer = "Natural England"
     text_blob = "culling of deer as part of a nature reserve management programme"
 
+    assert classify_sector(conn, buyer, text_blob) == "Central and Local Government"
+    assert is_contested(conn, buyer, text_blob) is False
+
+
+def test_ombudsman_type_buyer_still_has_no_keyword_match(conn):
+    """A genuinely remaining coverage gap, confirmed live 2026-08-10: an
+    ombudsman service isn't a government department/agency, council, or
+    housing association -- none of the newly-added keywords apply, and it
+    correctly stays unmatched rather than being force-fit into a sector."""
+    buyer = "The Office for Legal Complaints"
+    text_blob = "provision of a case management and HR system"
+
     assert classify_sector(conn, buyer, text_blob) is None
     assert is_contested(conn, buyer, text_blob) is False
-    assert uncoupled_candidate_sectors(conn, buyer, text_blob) == set()
