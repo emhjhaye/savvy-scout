@@ -113,13 +113,42 @@ def test_natural_england_now_matches_after_keyword_coverage_expansion(conn):
     assert is_contested(conn, buyer, text_blob) is False
 
 
-def test_ombudsman_type_buyer_still_has_no_keyword_match(conn):
-    """A genuinely remaining coverage gap, confirmed live 2026-08-10: an
-    ombudsman service isn't a government department/agency, council, or
-    housing association -- none of the newly-added keywords apply, and it
-    correctly stays unmatched rather than being force-fit into a sector."""
+def test_ombudsman_body_now_matches_per_explicit_manual_sweep_alignment(conn):
+    """2026-08-10: matched against the user's own manual sweep results
+    (explicit instruction: "make it same with the result of my manual
+    sweep") -- an ombudsman/complaints-handling body was originally left
+    unmatched on the assumption it was correctly out of scope, but the
+    user's manual review explicitly labelled it Central and Local
+    Government. Added as an identity keyword rather than guessed."""
     buyer = "The Office for Legal Complaints"
     text_blob = "provision of a case management and HR system"
 
-    assert classify_sector(conn, buyer, text_blob) is None
+    assert classify_sector(conn, buyer, text_blob) == "Central and Local Government"
+    assert is_contested(conn, buyer, text_blob) is False
+
+
+def test_bare_nationwide_no_longer_falsely_matches_the_adverb(conn):
+    """2026-08-10, confirmed live: "nationwide" (a Fintech identity keyword
+    for Nationwide Building Society) was matching the ordinary adverb
+    ("available nationwide"), wrongly contesting a clean "borough" match.
+    Same collision risk already avoided for bare "visa" -- removed rather
+    than word-boundary-guarded, since it's a genuine whole-word collision
+    with no boundary fix possible."""
+    buyer = "London Borough of Hillingdon"
+    text_blob = "framework agreement for building and construction consultancy services available nationwide"
+
+    assert classify_sector(conn, buyer, text_blob) == "Central and Local Government"
+    assert is_contested(conn, buyer, text_blob) is False
+
+
+def test_general_medical_council_excluded_from_central_and_local_government(conn):
+    """2026-08-10, confirmed live: "council" (Central and Local
+    Government's identity keyword) was matching "General Medical Council"
+    inside an NHS England notice -- a healthcare professional regulator,
+    not local government. Excluded so "nhs" wins cleanly instead of
+    wrongly contesting."""
+    buyer = "NHS England"
+    text_blob = "aligned to the general medical council (gmc) generic professional capabilities framework"
+
+    assert classify_sector(conn, buyer, text_blob) == "NHS and Healthcare"
     assert is_contested(conn, buyer, text_blob) is False

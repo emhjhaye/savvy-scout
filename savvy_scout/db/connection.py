@@ -255,6 +255,7 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         ("Central and Local Government", "your housing group", "identity"),
         ("Central and Local Government", "riverside group", "identity"),
         ("Central and Local Government", "be one homes", "identity"),
+        ("Central and Local Government", "office for legal complaints", "identity"),
         ("Energy", "sizewell c", "identity"),
     ]
     for sector, keyword, category in new_keyword_rows:
@@ -265,6 +266,39 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             conn.execute(
                 "INSERT INTO config_sector_keywords (sector, keyword, category) VALUES (?, ?, ?)",
                 (sector, keyword, category),
+            )
+
+    # Bare "nationwide" removed (2026-08-10) -- see seed_config.py's comment
+    # on it (same collision risk as bare "visa", confirmed live: matched
+    # the ordinary adverb "available nationwide", not Nationwide Building
+    # Society). Only meaningful on an already-seeded DB; harmless no-op
+    # otherwise since the row wouldn't exist yet either way.
+    conn.execute("DELETE FROM config_sector_keywords WHERE sector = 'Fintech' AND keyword = 'nationwide'")
+
+    # "General Medical Council" exclusion for Central and Local Government
+    # (2026-08-10) -- see seed_exclusion_terms' comment on it. Guarded the
+    # same way as the keyword rows above: only backfill an already-seeded
+    # DB, never insert first into a genuinely empty table.
+    exclusion_terms_seeded = conn.execute("SELECT 1 FROM config_exclusion_terms LIMIT 1").fetchone() is not None
+    if exclusion_terms_seeded:
+        existing_gmc_exclusion = conn.execute(
+            "SELECT 1 FROM config_exclusion_terms WHERE sector = 'Central and Local Government' "
+            "AND term = 'general medical council'"
+        ).fetchone()
+        if existing_gmc_exclusion is None:
+            from datetime import datetime, timezone
+
+            conn.execute(
+                "INSERT INTO config_exclusion_terms (sector, term, notes, updated_at, updated_by) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    "Central and Local Government",
+                    "general medical council",
+                    "Healthcare professional regulator (GMC), not local government -- "
+                    "matches 'council' but has nothing to do with it.",
+                    datetime.now(timezone.utc).isoformat(),
+                    "system_migration",
+                ),
             )
 
     # "health"/"hospital" no longer unconditional identity matches

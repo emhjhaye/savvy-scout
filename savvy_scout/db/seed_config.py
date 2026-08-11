@@ -113,6 +113,9 @@ SECTOR_KEYWORDS = [
         ("Central and Local Government", "your housing group", IDENTITY),
         ("Central and Local Government", "riverside group", IDENTITY),
         ("Central and Local Government", "be one homes", IDENTITY),
+        # Explicit request 2026-08-10, matching manual sweep results: an
+        # ombudsman/complaints-handling body.
+        ("Central and Local Government", "office for legal complaints", IDENTITY),
         # Bare industry vocabulary: matches non-IT work too (an EPA payments
         # notice, a "food bank" mention) so it needs a product/capability
         # coupling term from config_coupling_terms to count. 2026-07-20, after
@@ -135,7 +138,11 @@ SECTOR_KEYWORDS = [
         ("Fintech", "santander", IDENTITY),
         ("Fintech", "monzo", IDENTITY),
         ("Fintech", "revolut", IDENTITY),
-        ("Fintech", "nationwide", IDENTITY),
+        # bare "nationwide" removed (2026-08-10, confirmed live): same
+        # collision risk as bare "visa" above -- an ordinary adverb
+        # ("available nationwide") far more often than a reference to
+        # Nationwide Building Society, and word-boundary matching can't
+        # help since it's a genuine whole-word match either way.
         ("Fintech", "starling bank", IDENTITY),
         ("Fintech", "metro bank", IDENTITY),
         ("Fintech", "worldpay", IDENTITY),
@@ -353,6 +360,16 @@ def seed_exclusion_terms(conn: sqlite3.Connection) -> None:
         ("Energy", "substation construction", "Civil/electrical works, not software."),
         ("Energy", "cabling", "Physical installation, not software."),
         ("Energy", "boiler servicing", "Maintenance work, not software."),
+        # 2026-08-10, confirmed live: "council" (Central and Local
+        # Government's identity keyword) matched "General Medical Council"
+        # in an NHS England notice -- a healthcare professional regulator,
+        # not local government. Excludes Central and Local Government from
+        # matching so "nhs" wins cleanly instead of wrongly contesting.
+        (
+            "Central and Local Government", "general medical council",
+            "Healthcare professional regulator (GMC), not local government -- matches "
+            "'council' but has nothing to do with it.",
+        ),
     ]
     conn.executemany(
         "INSERT INTO config_exclusion_terms (sector, term, notes, updated_at, updated_by) "
