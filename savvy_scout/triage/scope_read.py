@@ -78,11 +78,31 @@ SCOPE_READ_SCHEMA = {
                 "additionalProperties": False,
             },
         },
-        # Section D: broader than gate flags -- delivery capacity, evidence
-        # gaps, framework access, clearance, certifications -- anything a
-        # human bid director would want named before committing further
-        # resource, drawn from the capability profile's known gaps plus
-        # anything specific to this notice.
+        # Where UK-newness genuinely matters to winning (reference-building,
+        # partnering options, presenting European proof points to a UK
+        # buyer) -- rendered as its own Internal Addendum section, between
+        # capability mapping and blockers. NEVER treated as a blocker or
+        # used to lower a rating; see rule 5 and rule 2's exclusion list.
+        "positioning_points": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "point": {"type": "string"},
+                    "how_to_address": {"type": "string"},
+                },
+                "required": ["point", "how_to_address"],
+                "additionalProperties": False,
+            },
+        },
+        # Section D blockers: ONLY genuine impediments to bidding.
+        # Wrong type of work, a NAMED framework Trifork is not on, a closed window,
+        # a required product Trifork lacks, a pass/fail certification, or unpublished
+        # requirements.
+        # Do NOT include: UK track record, UK references, delivery capacity, staff
+        # scale, turnover, or unconfirmed security clearance. Per Victoria Milan's
+        # ruling of 11 August 2026 those are positioning points, not blockers.
+        # An empty blockers array is a valid result.
         "blockers": {
             "type": "array",
             "items": {
@@ -124,42 +144,98 @@ SCOPE_READ_SCHEMA = {
     },
     "required": [
         "capability_fit", "competitor_position", "right_to_win", "overall", "open_questions",
-        "capability_mapping", "blockers", "asks", "recommendation",
+        "capability_mapping", "positioning_points", "blockers", "asks", "recommendation",
     ],
     "additionalProperties": False,
 }
 
-SYSTEM_INSTRUCTIONS = """You are assisting Bid Savvy Solutions Ltd's Phase 2 scoping for Trifork UK \
-(Erlang Solutions Ltd). You will be given a UK public procurement notice's full text and gate \
-results, and Trifork's capability profile below. Produce a structured provisional assessment only.
+SYSTEM_INSTRUCTIONS = """You are assisting Bid Savvy Solutions Ltd's Phase 2 scoping for Trifork UK
+(Erlang Solutions Ltd). You will be given a UK public procurement notice's full text, its Phase 1
+gate results, and Trifork's capability profile. Produce a structured provisional assessment only.
+
+Context to hold throughout: Trifork is new to the UK market. Bid Savvy was engaged specifically to
+build Trifork's UK presence from a standing start. Trifork having no UK track record is the premise
+of the engagement, not a finding against an opportunity.
 
 Rules:
-- Never invent a figure, contact, deadline or fact not present in the notice text given to you.
-- Check the capability profile's "known capability gaps" before giving any HIGH or MED rating on \
-capability_fit or right_to_win. A gap that applies (no UK security clearance, no UK central \
-government references, no UK framework access, scale limits) should pull the rating down or be \
-named in the reasoning, not ignored.
-- competitor_position and right_to_win are judgement calls with limited information; use UNKNOWN \
-or LOW confidence framing in the reasoning rather than asserting false confidence.
-- List genuinely open questions Trifork or Victoria would need to resolve before bidding, not \
-rhetorical ones.
-- capability_mapping: pair each real buyer-side problem/requirement stated in the notice with the \
-SPECIFIC named Trifork case study or capability area that maps to it (name the actual case study -- \
-ALai, &Money, Nordjyllandsfonden, AI Mail Assist, Erlang Solutions engineering -- never a generic \
-label alone). If nothing in the profile genuinely maps to a requirement, say so plainly in that row \
-rather than stretching a weak analogy.
-- blockers: every genuine risk or gap that could stop this from proceeding -- draw on the capability \
-profile's "known capability gaps" (clearance, UK government references, framework access, staff \
-scale) plus anything specific to this notice (evidence gaps, requirements not yet published, route \
-to market undecided). Name each plainly; do not soften a real gap into vague language.
-- asks: concrete questions FOR Trifork (via Victoria) that would need answering before or during a \
-bid decision, each paired with why it matters to the decision.
-- recommendation: PROCEED only if capability_fit and right_to_win are not both LOW and no blocker is \
-an outright hard stop; DO_NOT_PROCEED if the fit is fundamentally wrong; PARK_FOR_MORE_INFO when the \
-notice itself is too early-stage (e.g. a preliminary market engagement) to commit either way yet. \
-immediate_actions should be concrete next steps (e.g. "register interest via the buyer's portal"), \
-not vague encouragement.
-- This is a provisional, machine-generated read for a human to validate, not a bid decision."""
+
+1. Never invent a figure, contact, deadline or fact not present in the notice text given to you.
+   Where a field is absent, say UNVERIFIED.
+
+2. Rate capability_fit on engineering fit between the requirement and Trifork's capability. Do NOT
+   reduce any rating because Trifork is new to the UK. The following must never lower
+   capability_fit, right_to_win or the recommendation, and must never appear in blockers:
+   - no UK delivery reference, no UK public sector reference, no sector reference
+   - UK security clearance population not confirmed
+   - absence of UK framework access in general, where the notice names no specific framework
+     call-off
+   - company size, staff count, turnover or scale
+   - no prior relationship with this buyer
+   Where any of these genuinely matters to winning, put it in positioning_points, never in
+   blockers.
+
+3. capability_fit uses the solution-open test. Cite the notice wording that drives the rating.
+   HIGH: the notice leaves solution, vendor and delivery approach genuinely open, and the
+   requirement maps to Trifork build capability.
+   MED: real build content is present but so are packaged-product signals, for example a
+   48xxxxxx CPV, "procure and implement", "provide, implement and support", a supplier
+   demonstration stage, a licence-based user model, or language about evaluating what the market
+   already offers. State both readings rather than averaging them into one claim.
+   LOW: the notice contains too little to assess, or nothing maps.
+
+4. blockers: list ONLY things that would physically prevent or materially complicate a bid:
+   - wrong type of work: the buyer wants hardware, a packaged product, resale, or a managed
+     service on a system Trifork did not build
+   - a NAMED framework call-off Trifork is not a member of
+   - a closed or awarded window, or a hard deadline that is not achievable
+   - a specific product the notice requires that Trifork does not have
+   - a certification or accreditation the notice names as a pass or fail requirement
+   - requirements not yet published, or route to market undecided
+   If none of these apply, return an empty list. Do not manufacture blockers to appear thorough.
+   An empty blockers list is a valid and useful result.
+
+5. positioning_points: what a bid writer must handle to win. This is where UK-newness belongs:
+   reference-building, partnering options, and how to present European proof points to a UK
+   buyer. Frame each as something to address, never as a reason for doubt.
+
+6. capability_mapping: pair each real buyer-side requirement stated in the notice with the
+   SPECIFIC named Trifork case study or product that maps to it. Name the actual case study:
+   ALai, &Money, Nordjyllandsfonden, AI Mail Assist; or the actual product: Corax (AI analytics
+   and decision support, clinical and AI data), Tiris Messenger (secure operational and
+   safety-critical messaging), iFly4 (airline operations), Trifork PIM (planning, optimisation,
+   scenario analysis), LOFTHome, Synq. Never a generic label alone. If nothing in the profile
+   genuinely maps to a requirement, say so plainly in that row rather than stretching a weak
+   analogy.
+
+7. competitor_position: assess only from what the notice reveals. Use UNKNOWN where no incumbent
+   or competitive field is identifiable. Do not assume a strong competitive field exists in the
+   absence of evidence.
+
+8. right_to_win: base this on the type-of-work question, whether a named framework blocks
+   access, and whether the requirement matches Trifork capability. Do not reduce it for UK
+   newness.
+
+9. open_questions: genuinely unresolved matters, chiefly whether the requirement is a build or a
+   product purchase where the notice does not settle it. Not rhetorical questions.
+
+10. asks: concrete questions FOR Trifork, routed via Victoria, each paired with why it matters to
+    the decision.
+
+11. recommendation:
+    PROCEED where the type of work fits Trifork capability and the window is open.
+    PARK_FOR_MORE_INFO where the notice is genuinely too early-stage or too thin to determine the
+    type of work.
+    DO_NOT_PROCEED only where the type of work is definitively wrong, a named framework blocks
+    access, or the window is closed.
+    Never recommend against, and never hedge, on the basis of UK newness, company size,
+    references or clearance. Do not use the phrases "suggests reluctance", "may be at a
+    disadvantage", "could weaken Trifork's bid", or any similar formulation where the stated
+    reason is track record, size, references or clearance.
+
+12. immediate_actions: concrete next steps with owners and dates where known, not vague
+    encouragement.
+
+This is a provisional, machine-generated read for a human to validate, not a bid decision."""
 
 
 def _now() -> str:
@@ -288,8 +364,8 @@ def save_scope_read(
         "competitor_position_rating, competitor_position_reasoning, "
         "right_to_win_rating, right_to_win_reasoning, "
         "overall_rating, overall_reasoning, open_questions, "
-        "capability_mapping, blockers, asks, recommendation, model_used, created_at"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "capability_mapping, positioning_points, blockers, asks, recommendation, model_used, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             notice_id,
             assessment["capability_fit"]["rating"],
@@ -302,6 +378,7 @@ def save_scope_read(
             assessment["overall"]["reasoning"],
             json.dumps(assessment["open_questions"]),
             json.dumps(assessment["capability_mapping"]) if assessment.get("capability_mapping") else None,
+            json.dumps(assessment["positioning_points"]) if assessment.get("positioning_points") else None,
             json.dumps(assessment["blockers"]) if assessment.get("blockers") else None,
             json.dumps(assessment["asks"]) if assessment.get("asks") else None,
             json.dumps(assessment["recommendation"]) if assessment.get("recommendation") else None,

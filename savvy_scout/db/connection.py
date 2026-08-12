@@ -317,9 +317,31 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     # on phase2_assessments. All nullable; existing assessments just don't
     # have them until re-run.
     assessment_cols = [r[1] for r in conn.execute("PRAGMA table_info(phase2_assessments)").fetchall()]
-    for col in ("capability_mapping", "blockers", "asks", "recommendation"):
+    for col in ("capability_mapping", "positioning_points", "blockers", "asks", "recommendation"):
         if col not in assessment_cols:
             conn.execute(f"ALTER TABLE phase2_assessments ADD COLUMN {col} TEXT")
+
+    # Blockers/capability profile prompt correction (2026-08-12, Victoria
+    # Milan's ruling of 11 August 2026): the previously-seeded capability
+    # profile framed UK track record/references/clearance/staff scale as
+    # "known capability gaps" the model should weigh against a rating --
+    # those are positioning points, never blockers. seed_capability_profile
+    # only seeds an empty table, so an already-seeded production DB needs
+    # its existing row updated directly. Matched on the exact old heading
+    # so this is a no-op once already applied (idempotent on every boot),
+    # and never touches a row someone has since hand-edited to something
+    # else entirely.
+    old_profile_marker = "Known capability gaps (load-bearing, check before any HIGH or MED rating):"
+    current_profile_row = conn.execute(
+        "SELECT id, profile_text FROM config_capability_profile ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if current_profile_row is not None and old_profile_marker in current_profile_row["profile_text"]:
+        from savvy_scout.db.seed_config import CAPABILITY_PROFILE_TEXT
+
+        conn.execute(
+            "UPDATE config_capability_profile SET profile_text = ? WHERE id = ?",
+            (CAPABILITY_PROFILE_TEXT, current_profile_row["id"]),
+        )
 
     if missing_additional_cols:
         import json as _json

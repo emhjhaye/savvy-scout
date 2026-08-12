@@ -11,6 +11,7 @@ SECTION_TITLES = [
     "TRIAGE GATE SUMMARY",
     "SCOUTING ASSESSMENT",
     "WHY THIS IS A HIGH FIT",
+    "POSITIONING POINTS",
     "OPEN BLOCKERS AND RISKS",
     "DIRECT ASKS FOR TRIFORK VIA VICTORIA",
     "DECISION REQUESTED FROM VICTORIA",
@@ -89,10 +90,14 @@ def test_build_brief_includes_provisional_label_when_assessment_exists(conn, tmp
 
 
 def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):
-    """Sections C/D/E/F use the richer AI-generated fields (capability
-    mapping, structured blockers, asks with reasons, an explicit
-    recommendation) when a Phase 2 assessment provides them, matching the
-    reference document's exact table shapes -- 2026-08-09."""
+    """Sections C/D/E/F/G use the richer AI-generated fields (capability
+    mapping, positioning points, structured blockers, asks with reasons, an
+    explicit recommendation) when a Phase 2 assessment provides them,
+    matching the reference document's exact table shapes -- 2026-08-09.
+    positioning_points added 2026-08-12 (Victoria Milan's ruling of 11
+    August 2026): UK delivery capacity/staff scale is a positioning point,
+    never a blocker -- this fixture keeps that distinction, unlike the
+    pre-fix data it replaces."""
     notice_id = _make_notice(conn)
     save_scope_read(
         conn,
@@ -106,8 +111,14 @@ def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):
             "capability_mapping": [
                 {"problem": "Settlement calculations", "capability_mapping": "&Money financial platform"},
             ],
+            "positioning_points": [
+                {
+                    "point": "No UK delivery reference yet",
+                    "how_to_address": "Lead with European proof points, e.g. &Money.",
+                },
+            ],
             "blockers": [
-                {"blocker": "UK delivery capacity", "assessment": "Approximately 15 UK staff."},
+                {"blocker": "Framework access", "assessment": "Named call-off Trifork is not on."},
             ],
             "asks": [
                 {"ask": "Confirm UK delivery capacity.", "why_it_matters": "Right to win depends on it."},
@@ -125,7 +136,10 @@ def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):
     assert "LCCC problem" in full_text
     assert "Trifork capability mapping" in full_text
     assert "&Money financial platform" in full_text
-    assert "UK delivery capacity" in full_text
+    assert "No UK delivery reference yet" in full_text
+    assert "How to address" in full_text
+    assert "Framework access" in full_text
+    assert "Named call-off Trifork is not on." in full_text
     assert "Confirm UK delivery capacity." in full_text
     assert "Why it matters" in full_text
     assert "Register interest via the buyer" in full_text

@@ -545,11 +545,23 @@ Strongest track record: Fintech (payments, real-time transactions, e.g. Klarna, 
 Danske Bank). Aviation, Rail and Transport and Energy are transferable-capability plays, not \
 proven-sector plays; match on engineering fit, not sector history.
 
-Known capability gaps (load-bearing, check before any HIGH or MED rating):
-- No confirmed UK Security Clearance population (SC or DV)
-- No UK central government reference contracts, European proof points only
-- No UK framework access as of this profile's date (G-Cloud 15 application in progress)
-- Approximately 15 staff, GBP 3 million turnover; scale is a constraint on large lots
+UK market position (context for the bid writer, NOT a rating factor):
+
+Trifork UK trades as Erlang Solutions Ltd. Trifork is entering the UK public sector market from \
+a standing start. This is the premise of the Bid Savvy engagement, not a finding against any \
+opportunity.
+
+The following are positioning points to be addressed in a bid. They are NOT blockers, NOT \
+risks, and must NEVER be used to lower capability_fit, right_to_win, or the recommendation:
+- UK security clearance population not yet confirmed (open action A3). Relevant only where a \
+notice states a clearance requirement.
+- Proof points are European, chiefly Danish, rather than UK. Establishing a first UK reference \
+is a stated objective of the engagement.
+- No UK framework access confirmed as at this profile's date. Relevant only where a notice \
+names a specific framework call-off that Trifork would need membership of.
+- Erlang Solutions Ltd is a confirmed SME, approximately 15 UK staff, around GBP 3 million \
+turnover. Note that SME status is frequently an advantage in UK public procurement; many \
+notices state SME suitability explicitly.
 
 If a notice's core requirement isn't covered by anything above, don't invent a stretch fit. \
 Flag it and describe the gap plainly."""

@@ -339,15 +339,24 @@ CREATE TABLE IF NOT EXISTS phase2_assessments (
     -- Internal Addendum sections C-F (2026-08-09, matches the reference
     -- document's exact table shapes): capability_mapping is a JSON array of
     -- {problem, capability} pairs (Section C, "Why this is a high fit");
-    -- blockers is a JSON array of {blocker, assessment} pairs (Section D,
-    -- broader than just gate flags -- delivery capacity, evidence gaps,
-    -- framework access, clearance, certifications); asks is a JSON array of
-    -- {ask, why_it_matters} pairs (Section E); recommendation is a JSON
-    -- object {decision, immediate_actions: [str], rationale} (Section F).
-    -- All nullable: assessments generated before this migration keep working
-    -- via the older rating/reasoning fields, see escalation/brief.py's
-    -- fallback rendering.
+    -- blockers is a JSON array of {blocker, assessment} pairs (Section D --
+    -- ONLY genuine impediments: wrong type of work, a named framework
+    -- Trifork isn't on, a closed window, a required product Trifork lacks,
+    -- a pass/fail certification, or unpublished requirements. Per Victoria
+    -- Milan's ruling of 11 August 2026, UK track record/references/
+    -- clearance/staff scale are NEVER blockers -- see positioning_points);
+    -- asks is a JSON array of {ask, why_it_matters} pairs (Section E);
+    -- recommendation is a JSON object {decision, immediate_actions: [str],
+    -- rationale} (Section F). All nullable: assessments generated before
+    -- this migration keep working via the older rating/reasoning fields,
+    -- see escalation/brief.py's fallback rendering.
     capability_mapping TEXT,
+    -- What a bid writer must handle to win -- UK-newness (reference-
+    -- building, partnering, presenting European proof points) belongs
+    -- here, never in blockers (2026-08-12, same ruling as above). JSON
+    -- array of {point, how_to_address} pairs, rendered as its own Internal
+    -- Addendum section between capability_mapping and blockers.
+    positioning_points TEXT,
     blockers TEXT,
     asks TEXT,
     recommendation TEXT

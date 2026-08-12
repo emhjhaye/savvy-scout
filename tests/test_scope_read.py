@@ -69,7 +69,11 @@ def _make_notice(conn):
 def test_get_capability_profile_returns_seeded_text(conn):
     profile = get_capability_profile(conn)
     assert "Erlang" in profile
-    assert "capability gaps" in profile.lower()
+    # 2026-08-12, Victoria Milan's ruling of 11 August 2026: UK track record/
+    # references/clearance/staff scale are positioning points, never
+    # "capability gaps" -- that framing is exactly what got corrected out.
+    assert "positioning points" in profile.lower()
+    assert "capability gaps" not in profile.lower()
 
 
 def test_run_scope_read_parses_structured_output(conn):
@@ -105,9 +109,10 @@ def test_save_scope_read_persists_all_fields(conn):
     assert row["capability_fit_rating"] == "MED"
     assert row["overall_rating"] == "FLAG"
     assert json.loads(row["open_questions"]) == VALID_ASSESSMENT["open_questions"]
-    # Internal Addendum sections C-F fields are optional -- absent here, so
+    # Internal Addendum sections C-G fields are optional -- absent here, so
     # they persist as NULL rather than raising.
     assert row["capability_mapping"] is None
+    assert row["positioning_points"] is None
     assert row["blockers"] is None
     assert row["asks"] is None
     assert row["recommendation"] is None
@@ -118,7 +123,13 @@ def test_save_scope_read_persists_internal_addendum_fields_when_present(conn):
     assessment = {
         **VALID_ASSESSMENT,
         "capability_mapping": [{"problem": "Real-time payments", "capability_mapping": "&Money"}],
-        "blockers": [{"blocker": "No UK framework access", "assessment": "Hard block if required."}],
+        "positioning_points": [
+            {"point": "No UK reference yet", "how_to_address": "Lead with European proof points, e.g. &Money."}
+        ],
+        # 2026-08-12: a named framework gap is a real blocker; UK track
+        # record/references/clearance/scale are not (see positioning_points
+        # above) -- this fixture deliberately keeps only the genuine kind.
+        "blockers": [{"blocker": "Named framework call-off Trifork is not on", "assessment": "Hard block."}],
         "asks": [{"ask": "Confirm delivery capacity", "why_it_matters": "Right to win depends on it."}],
         "recommendation": {
             "decision": "PROCEED",
@@ -132,6 +143,7 @@ def test_save_scope_read_persists_internal_addendum_fields_when_present(conn):
         "SELECT * FROM phase2_assessments WHERE notice_id = ? ORDER BY id DESC LIMIT 1", (notice_id,)
     ).fetchone()
     assert json.loads(row["capability_mapping"]) == assessment["capability_mapping"]
+    assert json.loads(row["positioning_points"]) == assessment["positioning_points"]
     assert json.loads(row["blockers"]) == assessment["blockers"]
     assert json.loads(row["asks"]) == assessment["asks"]
     assert json.loads(row["recommendation"]) == assessment["recommendation"]

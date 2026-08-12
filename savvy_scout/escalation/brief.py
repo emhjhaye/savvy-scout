@@ -253,7 +253,21 @@ def build_internal_addendum(conn: sqlite3.Connection, notice_id: int, output_dir
     else:
         story.append(Paragraph("Phase 2 scope read has not run yet for this notice.", styles["BriefCell"]))
 
-    story.append(Paragraph("D. OPEN BLOCKERS AND RISKS", styles["BriefSectionHeading"]))
+    # UK-newness (reference-building, partnering, European proof points)
+    # lives here, never in blockers below (Victoria Milan's ruling of 11
+    # August 2026, corrected into the prompt 2026-08-12). A bid writer
+    # genuinely needs this; it just isn't a reason for doubt.
+    story.append(Paragraph("D. POSITIONING POINTS", styles["BriefSectionHeading"]))
+    positioning_points = (
+        json.loads(assessment["positioning_points"]) if assessment and assessment["positioning_points"] else None
+    )
+    if positioning_points:
+        positioning_rows = [(row["point"], row["how_to_address"]) for row in positioning_points]
+        story.append(_section_table(["Point", "How to address"], positioning_rows, [6 * cm, 10 * cm], styles))
+    else:
+        story.append(Paragraph("None recorded.", styles["BriefCell"]))
+
+    story.append(Paragraph("E. OPEN BLOCKERS AND RISKS", styles["BriefSectionHeading"]))
     blockers = json.loads(assessment["blockers"]) if assessment and assessment["blockers"] else None
     if blockers:
         risk_rows = [(row["blocker"], row["assessment"]) for row in blockers]
@@ -261,7 +275,7 @@ def build_internal_addendum(conn: sqlite3.Connection, notice_id: int, output_dir
         risk_rows = [(g["gate_name"], g["reason"]) for g in flagged_gates] or [("No gate flags recorded", "")]
     story.append(_section_table(["Blocker or risk", "Assessment"], risk_rows, [4 * cm, 12 * cm], styles))
 
-    story.append(Paragraph("E. DIRECT ASKS FOR TRIFORK VIA VICTORIA", styles["BriefSectionHeading"]))
+    story.append(Paragraph("F. DIRECT ASKS FOR TRIFORK VIA VICTORIA", styles["BriefSectionHeading"]))
     asks = json.loads(assessment["asks"]) if assessment and assessment["asks"] else None
     if asks:
         ask_rows = [(row["ask"], row["why_it_matters"]) for row in asks]
@@ -271,7 +285,7 @@ def build_internal_addendum(conn: sqlite3.Connection, notice_id: int, output_dir
         question_rows = [(q,) for q in open_questions] or [("None recorded.",)]
         story.append(_section_table(["Open question"], question_rows, [16 * cm], styles))
 
-    story.append(Paragraph("F. DECISION REQUESTED FROM VICTORIA", styles["BriefSectionHeading"]))
+    story.append(Paragraph("G. DECISION REQUESTED FROM VICTORIA", styles["BriefSectionHeading"]))
     recommendation = json.loads(assessment["recommendation"]) if assessment and assessment["recommendation"] else None
     if recommendation:
         actions = "".join(f"({i}) {_esc(a)} " for i, a in enumerate(recommendation["immediate_actions"], start=1))
