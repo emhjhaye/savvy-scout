@@ -3,6 +3,7 @@ manual "Victoria decision" mark and Victoria's own decision route."""
 
 import json
 import os
+from datetime import datetime, timezone
 
 from flask import Blueprint, Response, abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
@@ -12,6 +13,10 @@ from savvy_scout.dashboard.notifications import STAGE_GROUPS, victoria_sourced_r
 from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
 from savvy_scout.escalation.brief import mark_emailed
 from savvy_scout.graph.mail import send_escalation_email as graph_send_escalation_email
+from savvy_scout.models.notice import Notice
+from savvy_scout.sources.ocds_parser import ParsedNotice
+from savvy_scout.sweep.dedupe import upsert_notice
+from savvy_scout.triage.gates import triage_notice
 from savvy_scout.triage.scope_read import get_scope_read_client
 from savvy_scout.workflow import approvals
 
@@ -125,6 +130,56 @@ def _process_pending_phase2(conn, owner: str | None):
     except Exception as e:
         current_app.logger.debug(f"Phase 2 processing skipped (API key not configured?): {e}")
         # Don't fail the queue page if Phase 2 can't run
+
+
+@queues_bp.route("/notices/add-manual", methods=["GET", "POST"])
+@login_required
+def add_notice_manual():
+    """Manual notice entry for sources the automated sweep can't reach --
+    currently just eTendersNI, whose search form requires solving a
+    mandatory CAPTCHA (a deliberate anti-automation control we won't
+    script around, see config_sources' notes on that source). A person
+    searches the real site themselves in their own browser and enters
+    what they find here, so it still flows through the same Phase 1/
+    Phase 2 pipeline as anything the automated sweep pulls in, instead of
+    being tracked separately outside the app."""
+    if request.method == "POST":
+        conn = get_db()
+        title = request.form.get("title", "").strip()
+        if not title:
+            flash("Title is required.", "error")
+            return redirect(url_for("queues.add_notice_manual"))
+
+        buyer = request.form.get("buyer", "").strip() or None
+        notice_url = request.form.get("notice_url", "").strip() or None
+        deadline = request.form.get("deadline", "").strip() or None
+        uk_stage = request.form.get("uk_stage") or "UK3"
+        description = request.form.get("description", "").strip()
+        ref = request.form.get("ref", "").strip() or f"MANUAL-{int(datetime.now(timezone.utc).timestamp())}"
+
+        notice = Notice(
+            ref=ref,
+            title=title,
+            buyer=buyer,
+            source="eTendersNI (manual entry)",
+            notice_type=None,
+            uk_stage=uk_stage,
+            raw_json="{}",
+            deadline=deadline,
+            notice_url=notice_url,
+        )
+        parsed = ParsedNotice(
+            notice=notice,
+            text_blob=f"{title}\n{description}".lower(),
+            tender_status=None,
+            tender_period_end=deadline,
+        )
+        notice_id = upsert_notice(conn, parsed, actor=f"manual_entry:{current_user.display_name}")
+        triage_notice(conn, notice_id, actor=current_user.display_name)
+        flash(f"Notice added and triaged: {ref}")
+        return redirect(url_for("queues.notice_detail", notice_id=notice_id))
+
+    return render_template("add_notice_manual.html")
 
 
 @queues_bp.route("/queue")

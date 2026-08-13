@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Add Notice Manually — Savvy Scout{% endblock %}
+{% block page_title %}Add Notice Manually{% endblock %}
+
+{% block content %}
+
+<style>
+  .manual-form-card {
+    max-width: 640px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 24px;
+  }
+  .manual-form-card .field { margin-bottom: 16px; }
+  .manual-form-card label {
+    display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted);
+    margin-bottom: 5px;
+  }
+  .manual-form-card input, .manual-form-card select, .manual-form-card textarea { width: 100%; }
+  .manual-form-card textarea { min-height: 90px; resize: vertical; }
+  .manual-form-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .captcha-note {
+    background: var(--surface-alt); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 20px; font-size: 13px; color: var(--text-muted);
+  }
+  .captcha-note a { color: var(--primary); font-weight: 600; }
+</style>
+
+<div class="captcha-note">
+  eTendersNI's search results are protected by a mandatory CAPTCHA, so they can't be swept
+  automatically. Search it yourself in your own browser at
+  <a href="https://etendersni.gov.uk/epps" target="_blank" rel="noopener">etendersni.gov.uk/epps</a>,
+  then enter anything relevant below — it goes through the same Phase 1/Phase 2 triage as
+  everything else.
+</div>
+
+<div class="manual-form-card">
+  <form method="POST">
+    <div class="field">
+      <label for="title">Title *</label>
+      <input type="text" id="title" name="title" required>
+    </div>
+    <div class="field">
+      <label for="buyer">Buyer</label>
+      <input type="text" id="buyer" name="buyer">
+    </div>
+    <div class="field">
+      <label for="ref">Notice reference</label>
+      <input type="text" id="ref" name="ref" placeholder="Leave blank to auto-generate">
+    </div>
+    <div class="field">
+      <label for="notice_url">Notice link</label>
+      <input type="text" id="notice_url" name="notice_url" placeholder="https://etendersni.gov.uk/...">
+    </div>
+    <div class="field">
+      <label for="deadline">Deadline</label>
+      <input type="date" id="deadline" name="deadline">
+    </div>
+    <div class="field">
+      <label for="uk_stage">Stage</label>
+      <select id="uk_stage" name="uk_stage">
+        <option value="UK1">UK1 — Pipeline</option>
+        <option value="UK2">UK2 — Preliminary market engagement</option>
+        <option value="UK3" selected>UK3 — Planned procurement</option>
+        <option value="UK4">UK4 — Tender</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="description">Description</label>
+      <textarea id="description" name="description" placeholder="Paste the notice text or a summary — this is what Gate 2's type-of-work matching reads."></textarea>
+      <div class="manual-form-hint">Used for sector/type-of-work keyword matching, same as an automated sweep's notice text.</div>
+    </div>
+    <button type="submit" class="btn btn-approve">Add and triage</button>
+  </form>
+</div>
+
+{% endblock %}
