@@ -8,6 +8,7 @@ from savvy_scout.triage.gates import (
     gate4_window,
     gate5_cpv,
     triage_notice,
+    _lookup_cpv,
 )
 
 
@@ -75,6 +76,70 @@ def test_gate1_identity_keyword_matches_without_coupling(conn):
 def test_gate1_no_sector_match_fails(conn):
     result = gate1_sector_owner(conn, "Unrelated Buyer", "totally unrelated procurement text")
     assert result.outcome == "FAIL"
+
+
+def test_gate1_nhs_v2_digital_health_keyword_matches(conn):
+    # Trifork scouting skill v2, Section 3a (2026-08-11): digital-health
+    # vocabulary specific enough to identify NHS notices on its own.
+    result = gate1_sector_owner(conn, "Some NHS Trust", "procurement of a new digital pathology service")
+    assert result.outcome == "PASS"
+    assert result.extra["sector"] == "NHS and Healthcare"
+
+
+def test_gate1_nhs_v2_exclusion_terms_stop_sector_match(conn):
+    # "health" alone is generic_needs_coupling, and "catering" is a Section
+    # 3a exclusion -- a catering notice for an NHS trust must not match.
+    result = gate1_sector_owner(conn, "Some NHS Trust", "provision of catering services to staff canteens")
+    assert result.outcome == "FAIL"
+
+
+# --- CPV: 48xxxxxx Corax/Tiris Messenger conditional PASS -------------------
+
+
+def test_cpv_48_with_corax_passes(conn):
+    # haystack is assumed already lowercased (see contains_keyword's
+    # docstring) -- text_blob is lowercased at ingestion in the real
+    # pipeline (ocds_parser.py), so tests must match that contract too.
+    outcome, reason = _lookup_cpv(conn, "48000000", "delivery of the corax ai analytics platform")
+    assert outcome == "PASS"
+    assert "Corax" in reason
+
+
+def test_cpv_48_with_tiris_passes(conn):
+    outcome, reason = _lookup_cpv(conn, "48000000", "provision of tiris messenger for safety-critical comms")
+    assert outcome == "PASS"
+    assert "Tiris" in reason
+
+
+def test_cpv_48_with_no_named_product_is_flag_not_blanket_pass(conn):
+    # Confirmed ruling: 48xxxxxx is never a blanket pass, even with no
+    # named Trifork product match.
+    outcome, reason = _lookup_cpv(conn, "48000000", "procurement of a generic case management system")
+    assert outcome == "FLAG"
+
+
+def test_gate2_cpv48_sector_scoped_still_requires_named_product(conn):
+    # Regression: every sector's config_sector_cpv_scope allows the "48"
+    # prefix, so without the special-case this blanket-passed any
+    # 48xxxxxx notice regardless of Corax/Tiris -- confirmed this stays a
+    # FLAG for NHS, not an automatic PASS, when no named product is present.
+    result = gate2_type_of_work(
+        conn,
+        "provision of a generic case management system",
+        cpv_primary="48000000",
+        sector="NHS and Healthcare",
+    )
+    assert result.outcome != "PASS"
+
+
+def test_gate2_cpv48_sector_scoped_passes_with_corax(conn):
+    result = gate2_type_of_work(
+        conn,
+        "bespoke build of the corax ai analytics platform for clinical data",
+        cpv_primary="48000000",
+        sector="NHS and Healthcare",
+    )
+    assert result.outcome == "PASS"
 
 
 # --- Gate 2: type of work ---------------------------------------------------

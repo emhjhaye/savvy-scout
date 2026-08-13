@@ -224,8 +224,15 @@ def gate2_type_of_work(
     elif scoped_prefixes is not None:
         allowed_display = ", ".join(f"{p}xxx" for p in scoped_prefixes)
         if any(cpv_primary.startswith(p) for p in scoped_prefixes):
-            cpv_outcome = "PASS"
-            cpv_reason = f"CPV {cpv_primary} is in {sector}'s allowed range ({allowed_display})."
+            if cpv_primary.startswith("48"):
+                # 48xxxxxx is never a blanket pass, even inside an allowed
+                # sector CPV range -- it still needs a named Trifork
+                # product match (Corax/Tiris Messenger), so defer to the
+                # same conditional lookup used outside sector scoping.
+                cpv_outcome, cpv_reason = _lookup_cpv(conn, cpv_primary, text_blob)
+            else:
+                cpv_outcome = "PASS"
+                cpv_reason = f"CPV {cpv_primary} is in {sector}'s allowed range ({allowed_display})."
         else:
             cpv_outcome = "FAIL"
             cpv_reason = f"CPV {cpv_primary} is outside {sector}'s allowed range ({allowed_display} only)."
@@ -410,11 +417,21 @@ def _lookup_cpv(conn: sqlite3.Connection, code: str, text_blob: str) -> tuple[st
             continue
         return row["list_type"], (row["notes"] or "exact CPV list match")
 
-    prefix_row = conn.execute(
-        "SELECT list_type, notes FROM config_cpv_lists WHERE cpv_code = ?", (code[:2],)
-    ).fetchone()
-    if prefix_row:
-        return prefix_row["list_type"], (prefix_row["notes"] or "prefix bucket match")
+    # Ordered so a conditioned row (e.g. 48xxxxxx + "corax") is checked
+    # before the bare fallback row for the same prefix (e.g. plain 48xxxxxx
+    # FLAG) -- condition_keyword IS NULL sorts last regardless of insertion
+    # order, matching the exact-code loop's condition-first behaviour above.
+    prefix_rows = conn.execute(
+        "SELECT list_type, condition_keyword, notes FROM config_cpv_lists WHERE cpv_code = ? "
+        "ORDER BY condition_keyword IS NULL",
+        (code[:2],),
+    ).fetchall()
+    for row in prefix_rows:
+        if row["condition_keyword"]:
+            if contains_keyword(text_blob, row["condition_keyword"]):
+                return row["list_type"], (row["notes"] or "prefix bucket match, condition met")
+            continue
+        return row["list_type"], (row["notes"] or "prefix bucket match")
 
     return "FLAG", "CPV code not in any documented list; unlisted, do not rate."
 

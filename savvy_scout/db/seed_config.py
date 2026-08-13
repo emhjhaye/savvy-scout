@@ -74,6 +74,28 @@ SECTOR_KEYWORDS = [
         ("NHS and Healthcare", "clinical commissioning", IDENTITY),
         ("NHS and Healthcare", "integrated care board", IDENTITY),
         ("NHS and Healthcare", "foundation trust", IDENTITY),
+        # Trifork scouting skill v2, Section 3a (2026-08-11): digital-health
+        # vocabulary specific enough to be identity matches, same
+        # specificity level as "clinical commissioning"/"foundation trust"
+        # above -- these terms don't occur outside a genuine health-data
+        # context the way bare "health"/"hospital" do.
+        ("NHS and Healthcare", "electronic patient record", IDENTITY),
+        ("NHS and Healthcare", "epr", IDENTITY),
+        ("NHS and Healthcare", "clinical data platform", IDENTITY),
+        ("NHS and Healthcare", "patient portal", IDENTITY),
+        ("NHS and Healthcare", "digital health platform", IDENTITY),
+        ("NHS and Healthcare", "clinical decision support", IDENTITY),
+        ("NHS and Healthcare", "clinical ai", IDENTITY),
+        ("NHS and Healthcare", "ai diagnostics", IDENTITY),
+        ("NHS and Healthcare", "digital pathology", IDENTITY),
+        ("NHS and Healthcare", "pathology informatics", IDENTITY),
+        ("NHS and Healthcare", "population health data", IDENTITY),
+        ("NHS and Healthcare", "health data platform", IDENTITY),
+        ("NHS and Healthcare", "interoperability", GENERIC),
+        ("NHS and Healthcare", "fhir", IDENTITY),
+        ("NHS and Healthcare", "hl7", IDENTITY),
+        ("NHS and Healthcare", "patient administration", IDENTITY),
+        ("NHS and Healthcare", "clinical safety", IDENTITY),
         ("Central and Local Government", "council", IDENTITY),
         ("Central and Local Government", "department for", IDENTITY),
         ("Central and Local Government", "cabinet office", IDENTITY),
@@ -370,6 +392,20 @@ def seed_exclusion_terms(conn: sqlite3.Connection) -> None:
             "Healthcare professional regulator (GMC), not local government -- matches "
             "'council' but has nothing to do with it.",
         ),
+        # Trifork scouting skill v2, Section 3a (2026-08-11): non-software
+        # NHS procurement categories, same pattern as Aviation/Rail/Energy's
+        # existing type-of-work exclusions above -- excluded at sector level
+        # so an "health"/"hospital" generic match doesn't sweep these in.
+        ("NHS and Healthcare", "medical devices", "Goods procurement, not software."),
+        ("NHS and Healthcare", "medical equipment supply", "Goods procurement, not software."),
+        ("NHS and Healthcare", "estates and facilities", "Facilities management, not software."),
+        ("NHS and Healthcare", "clinical staffing and agency", "Staffing/agency services, not software."),
+        ("NHS and Healthcare", "training and education delivery", "Training delivery, not software."),
+        ("NHS and Healthcare", "ppe", "Goods procurement, not software."),
+        ("NHS and Healthcare", "pharmaceuticals", "Goods procurement, not software."),
+        ("NHS and Healthcare", "catering", "Facilities/catering services, not software."),
+        ("NHS and Healthcare", "cleaning", "Facilities/cleaning services, not software."),
+        ("NHS and Healthcare", "patient transport", "Physical transport services, not software."),
     ]
     conn.executemany(
         "INSERT INTO config_exclusion_terms (sector, term, notes, updated_at, updated_by) "
@@ -457,11 +493,19 @@ def seed_cpv_lists(conn: sqlite3.Connection) -> None:
         ("72500000", "PASS", None, None),
         ("72", "INFERRED_FIT", None, "Adjacent 72xxx not on the explicit PASS list."),
         ("73", "INFERRED_FIT", None, "Adjacent 73xxx, subject to the 73430000 exact FAIL below."),
+        # Trifork scouting skill v2, Rule 4 (2026-08-11), confirmed ruling:
+        # a 48xxxxxx notice PASSES only where it maps to a named Trifork
+        # product -- Corax or Tiris Messenger. Condition rows are checked
+        # before the bare fallback row below (see _lookup_cpv's ORDER BY).
+        # Never auto-fail 48xxxxxx, never treat it as a blanket pass either.
+        ("48", "PASS", "corax", "Maps to Corax (AI analytics, decision support, clinical/AI data)."),
+        ("48", "PASS", "tiris", "Maps to Tiris Messenger (secure operational/safety-critical messaging)."),
         (
             "48",
             "FLAG",
             None,
-            "Open question: Trifork as product vendor for Corax and Tiris. Never auto-fail, never clean pass.",
+            "48xxxxxx with no named Trifork product match (Corax/Tiris Messenger). "
+            "Never auto-fail, never clean pass.",
         ),
         ("33", "FAIL", None, None),
         ("32", "FAIL", None, None),

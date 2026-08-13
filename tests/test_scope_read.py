@@ -7,7 +7,12 @@ from savvy_scout.models.notice import Notice
 from savvy_scout.sources.ocds_parser import ParsedNotice
 from savvy_scout.sweep.dedupe import upsert_notice
 from savvy_scout.triage.gates import triage_notice
-from savvy_scout.triage.scope_read import get_capability_profile, run_scope_read, save_scope_read
+from savvy_scout.triage.scope_read import (
+    SYSTEM_INSTRUCTIONS,
+    get_capability_profile,
+    run_scope_read,
+    save_scope_read,
+)
 
 VALID_ASSESSMENT = {
     "capability_fit": {"rating": "MED", "reasoning": "Data platform work, transferable engineering fit."},
@@ -64,6 +69,15 @@ def _make_notice(conn):
     notice_id = upsert_notice(conn, parsed)
     triage_notice(conn, notice_id)
     return notice_id
+
+
+def test_system_instructions_narrows_blockers_to_three_types(conn):
+    # Trifork scouting skill v2, Rule 1.1 (11 August 2026): only wrong type
+    # of work, a named framework gap, or a closed/awarded window count as
+    # blockers -- a required product and a pass/fail certification, both
+    # allowed by the earlier draft of this rule, must no longer be listed.
+    assert "only three things count as a blocker" in SYSTEM_INSTRUCTIONS
+    assert "do not add a required product, a certification" in SYSTEM_INSTRUCTIONS
 
 
 def test_get_capability_profile_returns_seeded_text(conn):

@@ -95,10 +95,12 @@ SCOPE_READ_SCHEMA = {
                 "additionalProperties": False,
             },
         },
-        # Section D blockers: ONLY genuine impediments to bidding.
-        # Wrong type of work, a NAMED framework Trifork is not on, a closed window,
-        # a required product Trifork lacks, a pass/fail certification, or unpublished
-        # requirements.
+        # Section D blockers: ONLY three things, per the Trifork scouting
+        # skill v2, Rule 1.1 (11 August 2026, Victoria Milan): wrong type of
+        # work, a NAMED framework call-off Trifork is not a member of, or a
+        # closed/awarded window. Nothing else counts, including a required
+        # product Trifork lacks or a pass/fail certification -- narrower
+        # than earlier drafts of this rule.
         # Do NOT include: UK track record, UK references, delivery capacity, staff
         # scale, turnover, or unconfirmed security clearance. Per Victoria Milan's
         # ruling of 11 August 2026 those are positioning points, not blockers.
@@ -183,16 +185,14 @@ Rules:
    already offers. State both readings rather than averaging them into one claim.
    LOW: the notice contains too little to assess, or nothing maps.
 
-4. blockers: list ONLY things that would physically prevent or materially complicate a bid:
+4. blockers: only three things count as a blocker. Nothing else, ever:
    - wrong type of work: the buyer wants hardware, a packaged product, resale, or a managed
      service on a system Trifork did not build
    - a NAMED framework call-off Trifork is not a member of
-   - a closed or awarded window, or a hard deadline that is not achievable
-   - a specific product the notice requires that Trifork does not have
-   - a certification or accreditation the notice names as a pass or fail requirement
-   - requirements not yet published, or route to market undecided
-   If none of these apply, return an empty list. Do not manufacture blockers to appear thorough.
-   An empty blockers list is a valid and useful result.
+   - a closed or awarded window
+   If none of these apply, return an empty list. Do not manufacture blockers to appear thorough,
+   and do not add a required product, a certification, or unpublished requirements as a blocker --
+   those are not one of the three. An empty blockers list is a valid and useful result.
 
 5. positioning_points: what a bid writer must handle to win. This is where UK-newness belongs:
    reference-building, partnering options, and how to present European proof points to a UK

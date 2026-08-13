@@ -343,6 +343,96 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             (CAPABILITY_PROFILE_TEXT, current_profile_row["id"]),
         )
 
+    # Trifork scouting skill v2, Section 3a NHS keywords + exclusions
+    # (2026-08-11) -- see SECTOR_KEYWORDS/seed_exclusion_terms' comments on
+    # these same rows. Guarded the same way as the earlier keyword/exclusion
+    # backfills above: only insert into an already-seeded table, never into
+    # a genuinely empty one (that would trip the _table_empty seeding trap).
+    sector_keywords_seeded_v2 = conn.execute(
+        "SELECT 1 FROM config_sector_keywords LIMIT 1"
+    ).fetchone() is not None
+    nhs_v2_keyword_rows = [] if not sector_keywords_seeded_v2 else [
+        ("NHS and Healthcare", "electronic patient record", "identity"),
+        ("NHS and Healthcare", "epr", "identity"),
+        ("NHS and Healthcare", "clinical data platform", "identity"),
+        ("NHS and Healthcare", "patient portal", "identity"),
+        ("NHS and Healthcare", "digital health platform", "identity"),
+        ("NHS and Healthcare", "clinical decision support", "identity"),
+        ("NHS and Healthcare", "clinical ai", "identity"),
+        ("NHS and Healthcare", "ai diagnostics", "identity"),
+        ("NHS and Healthcare", "digital pathology", "identity"),
+        ("NHS and Healthcare", "pathology informatics", "identity"),
+        ("NHS and Healthcare", "population health data", "identity"),
+        ("NHS and Healthcare", "health data platform", "identity"),
+        ("NHS and Healthcare", "interoperability", "generic_needs_coupling"),
+        ("NHS and Healthcare", "fhir", "identity"),
+        ("NHS and Healthcare", "hl7", "identity"),
+        ("NHS and Healthcare", "patient administration", "identity"),
+        ("NHS and Healthcare", "clinical safety", "identity"),
+    ]
+    for sector, keyword, category in nhs_v2_keyword_rows:
+        exists = conn.execute(
+            "SELECT 1 FROM config_sector_keywords WHERE sector = ? AND keyword = ?", (sector, keyword)
+        ).fetchone()
+        if exists is None:
+            conn.execute(
+                "INSERT INTO config_sector_keywords (sector, keyword, category) VALUES (?, ?, ?)",
+                (sector, keyword, category),
+            )
+
+    exclusion_terms_seeded_v2 = conn.execute(
+        "SELECT 1 FROM config_exclusion_terms LIMIT 1"
+    ).fetchone() is not None
+    nhs_v2_exclusion_rows = [] if not exclusion_terms_seeded_v2 else [
+        ("NHS and Healthcare", "medical devices", "Goods procurement, not software."),
+        ("NHS and Healthcare", "medical equipment supply", "Goods procurement, not software."),
+        ("NHS and Healthcare", "estates and facilities", "Facilities management, not software."),
+        ("NHS and Healthcare", "clinical staffing and agency", "Staffing/agency services, not software."),
+        ("NHS and Healthcare", "training and education delivery", "Training delivery, not software."),
+        ("NHS and Healthcare", "ppe", "Goods procurement, not software."),
+        ("NHS and Healthcare", "pharmaceuticals", "Goods procurement, not software."),
+        ("NHS and Healthcare", "catering", "Facilities/catering services, not software."),
+        ("NHS and Healthcare", "cleaning", "Facilities/cleaning services, not software."),
+        ("NHS and Healthcare", "patient transport", "Physical transport services, not software."),
+    ]
+    if nhs_v2_exclusion_rows:
+        from datetime import datetime, timezone as _tz
+
+        now_v2 = datetime.now(_tz.utc).isoformat()
+        for sector, term, notes in nhs_v2_exclusion_rows:
+            exists = conn.execute(
+                "SELECT 1 FROM config_exclusion_terms WHERE sector = ? AND term = ?", (sector, term)
+            ).fetchone()
+            if exists is None:
+                conn.execute(
+                    "INSERT INTO config_exclusion_terms (sector, term, notes, updated_at, updated_by) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (sector, term, notes, now_v2, "system_migration"),
+                )
+
+    # 48xxxxxx Corax/Tiris Messenger conditional PASS (2026-08-11) -- see
+    # seed_cpv_lists' comment on these rows. seed_cpv_lists only seeds an
+    # empty table, so an already-seeded production DB needs the two
+    # condition rows inserted explicitly; the bare 48/FLAG fallback row
+    # already exists from the original seed and is left alone.
+    cpv_lists_seeded = conn.execute("SELECT 1 FROM config_cpv_lists LIMIT 1").fetchone() is not None
+    if cpv_lists_seeded:
+        cpv_48_condition_rows = [
+            ("48", "PASS", "corax", "Maps to Corax (AI analytics, decision support, clinical/AI data)."),
+            ("48", "PASS", "tiris", "Maps to Tiris Messenger (secure operational/safety-critical messaging)."),
+        ]
+        for cpv_code, list_type, condition_keyword, notes in cpv_48_condition_rows:
+            exists = conn.execute(
+                "SELECT 1 FROM config_cpv_lists WHERE cpv_code = ? AND condition_keyword = ?",
+                (cpv_code, condition_keyword),
+            ).fetchone()
+            if exists is None:
+                conn.execute(
+                    "INSERT INTO config_cpv_lists (cpv_code, list_type, condition_keyword, notes) "
+                    "VALUES (?, ?, ?, ?)",
+                    (cpv_code, list_type, condition_keyword, notes),
+                )
+
     if missing_additional_cols:
         import json as _json
 
