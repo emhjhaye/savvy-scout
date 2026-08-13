@@ -26,7 +26,12 @@ def seed_owner_map(conn: sqlite3.Connection) -> None:
         return
     now = _now()
     rows = [
-        ("NHS and Healthcare", "Hammad", None),
+        (
+            "NHS and Healthcare",
+            "Mark",
+            "Transferred from Hammad to Mark, 11 August 2026 (Trifork scouting skill v2, "
+            "Rule 2.4). There are two scouting desks only, Mark and Kanvesh.",
+        ),
         ("Central and Local Government", "Kanvesh", None),
         ("Fintech", "Mark", None),
         ("Aviation", "Mark", "Airlines only. Airports, ATC and defence aviation fail Gate 1."),

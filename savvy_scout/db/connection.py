@@ -343,6 +343,21 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
             (CAPABILITY_PROFILE_TEXT, current_profile_row["id"]),
         )
 
+    # NHS and Healthcare owner transferred from Hammad to Mark (2026-08-11,
+    # Trifork scouting skill v2, Rule 2.4, confirmed with Mark) -- two
+    # scouting desks only, Mark and Kanvesh. seed_owner_map only seeds an
+    # empty table, so an already-seeded production DB needs its existing
+    # row updated directly. This only changes the CONFIG (which owner
+    # new/re-triaged notices get); existing notices.owner rows already
+    # assigned to Hammad are reassigned separately, by an explicit one-off
+    # script, not by this migration.
+    conn.execute(
+        "UPDATE config_owner_map SET owner = 'Mark', "
+        "notes = 'Transferred from Hammad to Mark, 11 August 2026 (Trifork scouting skill v2, "
+        "Rule 2.4). There are two scouting desks only, Mark and Kanvesh.' "
+        "WHERE sector = 'NHS and Healthcare' AND owner = 'Hammad'"
+    )
+
     # Trifork scouting skill v2, Section 3a NHS keywords + exclusions
     # (2026-08-11) -- see SECTOR_KEYWORDS/seed_exclusion_terms' comments on
     # these same rows. Guarded the same way as the earlier keyword/exclusion
