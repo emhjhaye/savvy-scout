@@ -8,9 +8,8 @@
 {% macro gate_badge(outcome) %}
   {% if outcome == 'PASS' %}<span class="badge badge-pass">✓ Pass</span>
   {% elif outcome == 'FAIL' %}<span class="badge badge-fail">✕ Fail</span>
-  {% elif outcome == 'FLAG' %}<span class="badge badge-flag">⚑ Flag</span>
+  {% elif outcome in ('FLAG', 'MAYBE') %}<span class="badge badge-flag">⚑ Flag</span>
   {% elif outcome == 'INFERRED_FIT' %}<span class="badge badge-inferred">~ Inferred</span>
-  {% elif outcome == 'MAYBE' %}<span class="badge badge-maybe">? Maybe</span>
   {% elif outcome == 'MONITOR' %}<span class="badge badge-unknown">◎ Monitor</span>
   {% else %}<span class="badge badge-unknown">—</span>{% endif %}
 {% endmacro %}

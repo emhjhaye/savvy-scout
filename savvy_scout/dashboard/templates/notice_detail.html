@@ -407,7 +407,7 @@
       {% elif triage_run['headline_outcome'] == 'FAIL' %}
         <span class="badge badge-fail">✕ Overall: Fail</span>
       {% elif triage_run['headline_outcome'] in ('FLAG', 'MAYBE') %}
-        <span class="badge badge-flag">⚑ Overall: {{ triage_run['headline_outcome'] }}</span>
+        <span class="badge badge-flag">⚑ Overall: {{ 'FLAG' if triage_run['headline_outcome'] == 'MAYBE' else triage_run['headline_outcome'] }}</span>
       {% elif triage_run['headline_outcome'] == 'INFERRED_FIT' %}
         <span class="badge badge-inferred">~ Inferred Fit</span>
       {% else %}
@@ -427,7 +427,7 @@
           <div class="gate-name">{{ g['gate_number'] }} — {{ g['gate_name'] }}</div>
           <div class="gate-outcome" style="color: {% if g['outcome'] == 'PASS' %}#059669{% elif g['outcome'] == 'FAIL' %}#DC2626{% elif g['outcome'] in ('FLAG','MAYBE') %}#D97706{% else %}#1D4ED8{% endif %}">
             {% if g['outcome'] == 'PASS' %}✓{% elif g['outcome'] == 'FAIL' %}✕{% elif g['outcome'] in ('FLAG','MAYBE') %}⚑{% else %}~{% endif %}
-            {{ g['outcome'] }}
+            {{ 'FLAG' if g['outcome'] == 'MAYBE' else g['outcome'] }}
           </div>
           {% if g['reason'] %}
             <div class="gate-reason">{{ g['reason'] }}</div>
