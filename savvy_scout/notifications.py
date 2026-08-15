@@ -63,6 +63,31 @@ def _require_env(name: str) -> str:
 
 def send_email(to_address: str, subject: str, body: str) -> None:
     """Send a plain-text email via SMTP. Raises NotificationError on failure."""
+    _send_email_message(to_address, subject, body, attachment_path=None)
+
+
+def send_email_with_attachment(
+    to_address: str, subject: str, body: str, attachment_path: str
+) -> None:
+    """Same as send_email, plus one file attachment -- used for the Weekly/
+    Monthly Trifork reports (2026-08-15). Enforces the same @bidsavvy.io-only
+    whitelist as graph/mail.py's assert_whitelisted (SPEC.md non-negotiable
+    2): these reports are prepared for Trifork's leadership team, but the
+    tool itself only ever delivers them to a Bid Savvy inbox -- a person
+    decides when/how to forward to Trifork, the same trust boundary as the
+    Internal Addendum vs. the client-facing Capture Brief."""
+    domain = to_address.rsplit("@", 1)[-1].lower() if "@" in to_address else ""
+    if domain != "bidsavvy.io":
+        raise NotificationError(
+            f"Refusing to send to {to_address}: outbound email is whitelisted to "
+            f"@bidsavvy.io addresses only (SPEC.md non-negotiable 2)."
+        )
+    _send_email_message(to_address, subject, body, attachment_path=attachment_path)
+
+
+def _send_email_message(
+    to_address: str, subject: str, body: str, attachment_path: str | None
+) -> None:
     host = _require_env("SMTP_HOST")
     port = int(os.environ.get("SMTP_PORT", "587"))
     username = os.environ.get("SMTP_USERNAME")
@@ -75,6 +100,17 @@ def send_email(to_address: str, subject: str, body: str) -> None:
     message["From"] = f"{SENDER_DISPLAY_NAME} <{sender}>"
     message["To"] = to_address
     message.set_content(body)
+
+    if attachment_path:
+        from pathlib import Path
+
+        file_bytes = Path(attachment_path).read_bytes()
+        message.add_attachment(
+            file_bytes,
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=Path(attachment_path).name,
+        )
 
     try:
         with smtplib.SMTP(host, port, timeout=30) as smtp:

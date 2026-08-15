@@ -28,6 +28,14 @@ class Settings:
     # set for Phase 2 to be "ready" (see scope_read_ready below).
     openai_api_key: str | None = None
     scope_read_provider: str = "anthropic"
+    # SPEC.md C6 Friday EOW report / monthly pipeline report (2026-08-15):
+    # a single @bidsavvy.io mailbox the auto-generated .docx reports are
+    # emailed to (never sent to Trifork directly -- see notifications.py's
+    # send_email_with_attachment docstring). Report generation still runs
+    # and writes the file even if this is unset; only the emailing step
+    # is skipped.
+    report_recipient_email: str | None = None
+    reports_output_dir: str = "reports"
 
     @property
     def graph_configured(self) -> bool:
@@ -62,4 +70,6 @@ def load_settings() -> Settings:
         ms_graph_client_id=os.environ.get("MS_GRAPH_CLIENT_ID") or None,
         ms_graph_client_secret=os.environ.get("MS_GRAPH_CLIENT_SECRET") or None,
         ms_graph_sender_upn=os.environ.get("MS_GRAPH_SENDER_UPN") or None,
+        report_recipient_email=os.environ.get("REPORT_RECIPIENT_EMAIL") or None,
+        reports_output_dir=os.environ.get("SAVVY_SCOUT_REPORTS_DIR", "reports"),
     )
