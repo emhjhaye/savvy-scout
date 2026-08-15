@@ -1,4 +1,4 @@
-"""Phase 1 triage gates (SPEC.md A3), five gates plus Filter 3, built on the
+﻿"""Phase 1 triage gates (SPEC.md A3), five gates plus Filter 3, built on the
 decisions you made on the flagged disagreements:
 
 - Gate 1 owner map: Energy = Mark. Ambiguous or contested sector = FLAG to
@@ -535,18 +535,27 @@ def run_gates(conn: sqlite3.Connection, notice_row: sqlite3.Row) -> dict[str, Ga
 
 def headline_outcome(results: dict[str, GateResult]) -> tuple[str, str, str]:
     """A FAIL anywhere is the headline, first FAIL in gate order if several --
-    it's a stronger, more conclusive signal than a FLAG/MAYBE/MONITOR, so it
-    must win even if an earlier gate in GATE_ORDER only flagged (2026-07-28
-    fix: a Gate 4 closed/awarded FAIL was being masked by an earlier Gate 2/3
-    FLAG, e.g. an UNVERIFIED stage, letting obviously-closed tenders reach
-    Phase 2 instead of failing). Absent any FAIL, first non-PASS in gate
-    order is the headline, same as before. All PASS means the notice passes
-    Phase 1 clean."""
+    it's a stronger, more conclusive signal than a FLAG/MONITOR, so it must
+    win even if an earlier gate in GATE_ORDER only flagged. Absent any FAIL,
+    the first non-PASS in gate order is the headline; legacy MAYBE values are
+    normalized to FLAG so the system has no separate pursue state. All PASS
+    means the notice passes Phase 1 clean."""
+    normalized = {}
+    for gate_key, result in results.items():
+        outcome = result.outcome
+        if outcome == "MAYBE":
+            outcome = "FLAG"
+        normalized[gate_key] = GateResult(outcome, result.reason, result.extra)
+
     for gate_key in GATE_ORDER:
-        if results[gate_key].outcome == "FAIL":
-            return gate_key, "FAIL", results[gate_key].reason
+        if gate_key not in normalized:
+            continue
+        if normalized[gate_key].outcome == "FAIL":
+            return gate_key, "FAIL", normalized[gate_key].reason
     for gate_key in GATE_ORDER:
-        result = results[gate_key]
+        if gate_key not in normalized:
+            continue
+        result = normalized[gate_key]
         if result.outcome != "PASS":
             return gate_key, result.outcome, result.reason
     return GATE_ORDER[0], "PASS", "All gates passed."
@@ -654,7 +663,7 @@ def triage_notice(conn: sqlite3.Connection, notice_id: int, actor: str = "system
     """Runs Phase 1 triage on one notice, records every gate result, moves
     the notice from NEW to PHASE1_TRIAGED, then routes based on headline outcome:
     - PASS: skip owner review, go straight to PHASE2_SCOPED for the AI scope read
-    - FLAG or MAYBE: also go to PHASE2_SCOPED, to gather more data before an
+    - FLAG: also go to PHASE2_SCOPED, to gather more data before an
       escalation decision, rather than auto-escalating on the Phase 1 result alone
     - FAIL: go to TO_REVIEW for owner double-check -- UNLESS the FAIL needs no
       human judgment call: no sector/owner assigned at all (nobody to review
@@ -687,13 +696,13 @@ def triage_notice(conn: sqlite3.Connection, notice_id: int, actor: str = "system
 
     # Route based on headline outcome per SPEC B1 + user policy:
     # - PASS: Phase 2 scope read
-    # - FLAG/MAYBE: Phase 2 scope read (gather more data before escalating)
+    # - FLAG: Phase 2 scope read (gather more data before escalating)
     # - FAIL: Owner double-check review (TO_REVIEW)
     # - MONITOR: Monitoring status (MONITORING)
     if headline_out == "PASS":
         next_status = Status.PHASE2_SCOPED
         reason = "Phase 1 passed all gates, proceeding to Phase 2 scope read"
-    elif headline_out in ("FLAG", "MAYBE"):
+    elif headline_out == "FLAG":
         next_status = Status.PHASE2_SCOPED
         reason = f"Phase 1 {headline_out} - proceeding to Phase 2 scope read for deeper assessment before escalation decision"
     elif headline_out == "FAIL":

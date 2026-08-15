@@ -1,7 +1,7 @@
 from savvy_scout.models.notice import Notice, Status
 from savvy_scout.sources.ocds_parser import ParsedNotice
 from savvy_scout.sweep.dedupe import upsert_notice
-from savvy_scout.triage.gates import retriage_notice, triage_notice
+from savvy_scout.triage.gates import GateResult, headline_outcome, retriage_notice, triage_notice
 from savvy_scout.workflow import approvals
 
 
@@ -65,6 +65,22 @@ def test_retriage_notice_records_a_new_triage_run(conn):
         "SELECT COUNT(*) AS n FROM triage_runs WHERE notice_id = ?", (notice_id,)
     ).fetchone()["n"]
     assert runs_after == runs_before + 1
+
+
+def test_headline_outcome_normalizes_legacy_maybe_to_flag():
+    results = {
+        "gate1": GateResult("PASS", "ok"),
+        "gate2": GateResult("MAYBE", "legacy maybe state"),
+        "gate3": GateResult("PASS", "ok"),
+        "gate4": GateResult("PASS", "ok"),
+        "gate5": GateResult("PASS", "ok"),
+        "filter3": GateResult("PASS", "ok"),
+    }
+
+    _, outcome, reason = headline_outcome(results)
+
+    assert outcome == "FLAG"
+    assert "legacy maybe state" in reason
 
 
 def test_retriage_and_route_refuses_non_pending_notice(conn):
