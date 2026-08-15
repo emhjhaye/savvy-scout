@@ -211,17 +211,22 @@ def _summary_text(notice_row, phase2_row) -> str:
 
 
 def generate_weekly_report(
-    conn: sqlite3.Connection, week_start: date, output_dir: str
+    conn: sqlite3.Connection, week_start: date, output_dir: str, owner: str | None = None
 ) -> str:
     """New opportunities first identified in the 7 days starting week_start
-    (Monday), across all sectors/owners -- a short-form flag only, per the
-    template. Filename: 'Trifork Scouting Weekly Report YYYY-MM-DD.docx'."""
+    (Monday) -- a short-form flag only, per the template. owner, if given
+    (e.g. "Mark"), restricts to that owner's sectors only (2026-08-15,
+    explicit request: Mark's reports should not include Kanvesh's Central
+    and Local Government notices). Filename: 'Trifork Scouting Weekly
+    Report YYYY-MM-DD.docx'."""
     week_end = week_start + timedelta(days=7)
     scope_where, scope_params = in_scope_filter_sql(conn)
+    owner_clause = " AND owner = ?" if owner else ""
+    owner_params = [owner] if owner else []
     rows = conn.execute(
         f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        f"AND ({scope_where}) ORDER BY sector, buyer, title",
-        [week_start.isoformat(), week_end.isoformat()] + scope_params,
+        f"AND ({scope_where}){owner_clause} ORDER BY sector, buyer, title",
+        [week_start.isoformat(), week_end.isoformat()] + scope_params + owner_params,
     ).fetchall()
 
     doc = Document()
@@ -282,22 +287,25 @@ def generate_weekly_report(
 
 
 def generate_monthly_report(
-    conn: sqlite3.Connection, month_start: date, output_dir: str
+    conn: sqlite3.Connection, month_start: date, output_dir: str, owner: str | None = None
 ) -> str:
     """Opportunities identified, decisions, bids in progress, and (as
     placeholders -- see module docstring) bids submitted/upcoming events/AOB,
-    for the calendar month containing month_start. Filename:
-    'Trifork Scouting Monthly Report YYYY-MM.docx'."""
+    for the calendar month containing month_start. owner, if given, restricts
+    to that owner's sectors only (see generate_weekly_report's docstring).
+    Filename: 'Trifork Scouting Monthly Report YYYY-MM.docx'."""
     if month_start.month == 12:
         month_end = date(month_start.year + 1, 1, 1)
     else:
         month_end = date(month_start.year, month_start.month + 1, 1)
 
     scope_where, scope_params = in_scope_filter_sql(conn)
+    owner_clause = " AND owner = ?" if owner else ""
+    owner_params = [owner] if owner else []
     rows = conn.execute(
         f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        f"AND ({scope_where}) ORDER BY sector, buyer, title",
-        [month_start.isoformat(), month_end.isoformat()] + scope_params,
+        f"AND ({scope_where}){owner_clause} ORDER BY sector, buyer, title",
+        [month_start.isoformat(), month_end.isoformat()] + scope_params + owner_params,
     ).fetchall()
 
     doc = Document()

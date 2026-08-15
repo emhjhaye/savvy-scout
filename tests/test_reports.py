@@ -82,6 +82,23 @@ def test_weekly_report_includes_notice_published_in_window(conn, tmp_path):
     assert "Awaiting Phase 2 AI scope read" in text
 
 
+def test_weekly_report_owner_filter_excludes_other_owners(conn, tmp_path):
+    _insert_notice(
+        conn, ref="REF-MARK", title="Mark's opportunity", owner="Mark",
+        sector="Energy", cpv_primary="72212000",
+        first_published_at="2026-08-11T09:00:00+00:00",
+    )
+    _insert_notice(
+        conn, ref="REF-KANVESH", title="Kanvesh's opportunity", owner="Kanvesh",
+        sector="Central and Local Government", cpv_primary="72212000",
+        first_published_at="2026-08-11T09:00:00+00:00",
+    )
+    path = generate_weekly_report(conn, date(2026, 8, 10), str(tmp_path), owner="Mark")
+    text = _all_paragraph_and_cell_text(Document(path))
+    assert "Mark's opportunity" in text
+    assert "Kanvesh's opportunity" not in text
+
+
 def test_weekly_report_excludes_out_of_scope_notices(conn, tmp_path):
     # Regression: an earlier version pulled every notice published this
     # week regardless of sector match, dumping the entire raw sweep
