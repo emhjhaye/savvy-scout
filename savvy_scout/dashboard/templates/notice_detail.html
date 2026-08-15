@@ -143,10 +143,7 @@
     {% elif s == 'PHASE2_SCOPED' %}
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 16px; background: rgba(139,92,246,0.1); border-radius: 8px; border: 1px solid rgba(139,92,246,0.3); margin-top: 8px;">
       <strong style="font-size: 13px; color: var(--navy); margin-right: 8px;">Waiting for Phase 2 scope read.</strong>
-      <span style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">The extracted procurement details above already give enough to review without an AI read.</span>
-      <form method="post" action="{{ url_for('queues.advance_phase2_manual_single', notice_id=notice['id']) }}" style="display:inline">
-        <button type="submit" class="btn btn-secondary">Proceed to Phase 2 approval (skip AI read)</button>
-      </form>
+      <span style="font-size: 12px; color: var(--text-muted);">Run the AI scope read (Phase 2 tab of the Approval Queue) before this notice can be reviewed.</span>
     </div>
     {% elif s == 'ESCALATED_TO_VICTORIA' and current_user.is_victoria %}
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 16px; background: rgba(245,158,11,0.1); border-radius: 8px; border: 1px solid rgba(245,158,11,0.3); margin-top: 8px;">
@@ -341,9 +338,6 @@
         <div class="cb-body">CPV Primary: {{ notice['cpv_primary'] or '—' }} — {{ notice['cpv_primary_description'] or '—' }}{% if notice['cpv_primary_inferred'] %} <span class="badge badge-inferred">Inferred</span>{% endif %}</div>
         {% if cpv_additional %}
         <div class="cb-body">Additional CPV Codes: {{ cpv_additional | join(', ') }}</div>
-        {% endif %}
-        {% if notice['text_blob'] %}
-        <div class="cb-body cb-muted">{{ notice['text_blob'][:400] }}{% if notice['text_blob']|length > 400 %}… (see Notice Text below for full extract){% endif %}</div>
         {% endif %}
       </div>
     </div>

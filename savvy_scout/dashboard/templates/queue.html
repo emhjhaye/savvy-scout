@@ -111,9 +111,9 @@
     <strong>{{ phase2_pending_count }} notice{% if phase2_pending_count != 1 %}s{% endif %} are waiting for Phase 2 scope reads.</strong>
     <div style="font-size: 12px; color: var(--text-muted);">
       {% if phase2_ready %}
-        Run them explicitly before reviewing the Phase 2 queue, or skip straight to approval using the extracted notice details already on file.
+        Run the AI scope read before reviewing the Phase 2 queue.
       {% else %}
-        Set {{ scope_read_key_name }} in .env to run AI reads, or skip straight to approval using the extracted notice details already on file.
+        Set {{ scope_read_key_name }} in .env to run AI reads.
       {% endif %}
     </div>
   </div>
@@ -125,9 +125,6 @@
     {% else %}
       <button type="button" class="btn btn-secondary btn-sm" disabled>Process Phase 2</button>
     {% endif %}
-    <form method="post" action="{{ url_for('queues.advance_phase2_manual') }}">
-      <button type="submit" class="btn btn-secondary btn-sm">Proceed without AI read</button>
-    </form>
   </div>
 </div>
 {% endif %}
