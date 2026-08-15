@@ -147,7 +147,7 @@ def test_overview_shows_scouting_report(tmp_path):
     for ref, outcome in [
         ("REF-TODAY", "PASS"),
         ("REF-WEEK", "FLAG"),
-        ("REF-MONTH", "MAYBE"),
+        ("REF-MONTH", "MAYBE"),  # legacy outcome, must fold into FLAG below, never shown as its own state
         ("REF-YTD", "FAIL"),
     ]:
         _insert_triage_run(setup_conn, ref, outcome)
@@ -208,8 +208,10 @@ def test_overview_shows_scouting_report(tmp_path):
     assert "Swept yesterday" in html
     assert "PASS" in html
     assert "FLAG" in html
-    assert "MAYBE" in html
+    assert "MAYBE" not in html
     assert "FAIL" in html
+    # REF-WEEK (FLAG) + REF-MONTH (legacy MAYBE, folded in) = 2 in the FLAG bucket.
+    assert re.search(r'<span class="legend-label">FLAG</span>\s*<span class="legend-value">2</span>', html)
 
 
 def test_amended_old_notice_does_not_inflate_todays_count(tmp_path):

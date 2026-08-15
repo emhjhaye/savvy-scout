@@ -46,7 +46,7 @@ WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 # background, so keeping them here (rather than duplicated in Jinja) is the
 # single source of truth for both.
 SECTOR_PALETTE = ["#2563EB", "#7C3AED", "#10B981", "#F59E0B", "#EC4899", "#14B8A6", "#64748B"]
-TRIAGE_COLORS = {"PASS": "#10B981", "FLAG": "#F59E0B", "MAYBE": "#8B5CF6", "FAIL": "#DC2626"}
+TRIAGE_COLORS = {"PASS": "#10B981", "FLAG": "#F59E0B", "FAIL": "#DC2626"}
 
 
 def _conic_gradient(shares: list[tuple[str, float]]) -> str:
@@ -615,7 +615,11 @@ def index():
         tuple(in_scope_params),
     ).fetchall()
     triage_totals = {row["outcome"]: row["cnt"] for row in latest_triage_rows}
-    triage_order = ["PASS", "FLAG", "MAYBE", "FAIL"]
+    # Legacy MAYBE headline outcomes (recorded before Gate 3/5's 2026-08-15
+    # rewrite, see gates.py's headline_outcome) fold into FLAG here -- no
+    # gate has produced MAYBE since, and it's not a distinct outcome.
+    triage_totals["FLAG"] = triage_totals.get("FLAG", 0) + triage_totals.pop("MAYBE", 0)
+    triage_order = ["PASS", "FLAG", "FAIL"]
     triage_total = sum(triage_totals.values())
     triage_outcomes = [
         {
