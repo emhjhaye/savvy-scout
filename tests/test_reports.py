@@ -17,7 +17,7 @@ def _insert_notice(conn, **overrides):
         "buyer": "Some Council",
         "source": "Find a Tender",
         "uk_stage": "UK3",
-        "status": "NEW",
+        "status": "AWAITING_PHASE2_APPROVAL",
         "sector": "Central and Local Government",
         "owner": "Kanvesh",
         "cpv_primary": "72212000",  # within Central and Local Government's allowed 72/48 CPV scope
@@ -38,6 +38,15 @@ def _insert_notice(conn, **overrides):
     )
     conn.commit()
     return cursor.lastrowid
+
+
+def _mark_once_reached_approval(conn, notice_id, to_status="AWAITING_PHASE2_APPROVAL"):
+    conn.execute(
+        "INSERT INTO status_history (notice_id, from_status, to_status, changed_by, changed_at, reason) "
+        "VALUES (?, 'PHASE2_SCOPED', ?, 'owner', ?, 'test setup')",
+        (notice_id, to_status, datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
 
 
 def _all_paragraph_and_cell_text(doc: Document) -> str:
@@ -63,7 +72,7 @@ def test_weekly_report_includes_notice_published_in_window(conn, tmp_path):
         title="In-window opportunity",
         buyer="Some Trust",
         first_published_at="2026-08-11T09:00:00+00:00",
-        status="PHASE2_SCOPED",
+        status="AWAITING_PHASE2_APPROVAL",
     )
     _insert_notice(
         conn,
@@ -79,7 +88,23 @@ def test_weekly_report_includes_notice_published_in_window(conn, tmp_path):
     assert "In-window opportunity" in text
     assert "Out-of-window opportunity" not in text
     assert "Some Trust" in text
-    assert "Awaiting Phase 2 AI scope read" in text
+    assert "Owner to review Phase 2 read and confirm" in text
+
+
+def test_weekly_report_excludes_unapproved_phase2_scoped_notices(conn, tmp_path):
+    # 2026-08-15, explicit request: reports only cover opportunities
+    # already reviewed and approved past Phase 2 (or beyond) -- raw
+    # PHASE2_SCOPED material Mark hasn't looked at yet must not appear.
+    _insert_notice(
+        conn,
+        ref="REF-UNREVIEWED",
+        title="Not yet reviewed opportunity",
+        status="PHASE2_SCOPED",
+        first_published_at="2026-08-11T09:00:00+00:00",
+    )
+    path = generate_weekly_report(conn, date(2026, 8, 10), str(tmp_path))
+    text = _all_paragraph_and_cell_text(Document(path))
+    assert "Not yet reviewed opportunity" not in text
 
 
 def test_weekly_report_owner_filter_excludes_other_owners(conn, tmp_path):
@@ -171,11 +196,12 @@ def test_monthly_report_buckets_sectors_and_decisions(conn, tmp_path):
         indicative_value="GBP 100000", first_published_at="2026-08-05T09:00:00+00:00",
         status="ESCALATED_TO_VICTORIA",
     )
-    _insert_notice(
+    rejected_id = _insert_notice(
         conn, ref="REF-B", title="NHS data platform", sector="NHS and Healthcare",
         indicative_value="GBP 50000", first_published_at="2026-08-06T09:00:00+00:00",
         status="REJECTED",
     )
+    _mark_once_reached_approval(conn, rejected_id)
 
     path = generate_monthly_report(conn, month_start, str(tmp_path))
     assert path.endswith("Trifork Scouting Monthly Report 2026-08.docx")
@@ -190,11 +216,25 @@ def test_monthly_report_buckets_sectors_and_decisions(conn, tmp_path):
     assert "does not currently track" in text
 
 
+def test_monthly_report_excludes_notices_rejected_before_ever_reaching_approval(conn, tmp_path):
+    # A Phase 1 FAIL that never reached AWAITING_PHASE2_APPROVAL (no
+    # status_history evidence of it) must stay excluded even though it's
+    # REJECTED -- only reviewed-then-declined notices count.
+    _insert_notice(
+        conn, ref="REF-NEVER-REVIEWED", title="Never reviewed opportunity",
+        first_published_at="2026-08-07T09:00:00+00:00", status="REJECTED",
+    )
+    path = generate_monthly_report(conn, date(2026, 8, 1), str(tmp_path))
+    text = _all_paragraph_and_cell_text(Document(path))
+    assert "Never reviewed opportunity" not in text
+
+
 def test_monthly_report_marks_passed_deadline_rejections_as_too_late(conn, tmp_path):
     notice_id = _insert_notice(
         conn, ref="REF-LATE", title="Missed window opportunity",
         first_published_at="2026-08-05T09:00:00+00:00", status="REJECTED",
     )
+    _mark_once_reached_approval(conn, notice_id)
     conn.execute(
         "INSERT INTO triage_runs (notice_id, headline_gate, headline_outcome, headline_reason, evaluated_at) "
         "VALUES (?, 'gate4', 'FAIL', 'Closed or awarded (status: complete).', ?)",

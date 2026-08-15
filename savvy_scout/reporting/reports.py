@@ -38,6 +38,33 @@ GREY = RGBColor(0x55, 0x55, 0x55)
 # concrete "Product/Service Fit" line rather than a generic sector guess.
 TRIFORK_PRODUCTS = ["Corax", "Tiris Messenger", "iFly4", "Trifork PIM", "LOFTHome", "Synq"]
 
+# 2026-08-15, explicit request: reports and the pipeline tracker should
+# only cover opportunities the owner has already reviewed and approved the
+# Phase 2 AI scope read for (or that will be, i.e. anything still active
+# beyond that point) -- never raw/unreviewed PHASE2_SCOPED material or
+# earlier stages.
+POST_PHASE2_APPROVAL_STATUSES = (
+    "AWAITING_PHASE2_APPROVAL", "ESCALATED_TO_VICTORIA", "APPROVED",
+    "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE",
+)
+
+
+def _post_approval_scope_sql() -> tuple[str, list]:
+    """A notice counts if it's currently sitting at or beyond
+    AWAITING_PHASE2_APPROVAL, OR it's REJECTED but status_history shows it
+    once reached that stage before being declined (2026-08-15, explicit
+    request: a rejected notice that was actually reviewed still belongs in
+    the report -- only raw/unreviewed PHASE2_SCOPED-or-earlier material is
+    excluded)."""
+    status_placeholders = ",".join("?" for _ in POST_PHASE2_APPROVAL_STATUSES)
+    where = (
+        f"(status IN ({status_placeholders}) OR (status = 'REJECTED' AND EXISTS ("
+        f"SELECT 1 FROM status_history sh WHERE sh.notice_id = notices.id "
+        f"AND sh.to_status IN ({status_placeholders}))))"
+    )
+    params = list(POST_PHASE2_APPROVAL_STATUSES) * 2
+    return where, params
+
 NEXT_ACTION_BY_STATUS = {
     "NEW": "Awaiting Phase 1 triage",
     "PHASE1_TRIAGED": "Awaiting routing",
@@ -223,10 +250,12 @@ def generate_weekly_report(
     scope_where, scope_params = in_scope_filter_sql(conn)
     owner_clause = " AND owner = ?" if owner else ""
     owner_params = [owner] if owner else []
+    approval_where, approval_params = _post_approval_scope_sql()
     rows = conn.execute(
         f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        f"AND ({scope_where}){owner_clause} ORDER BY sector, buyer, title",
-        [week_start.isoformat(), week_end.isoformat()] + scope_params + owner_params,
+        f"AND ({scope_where}){owner_clause} AND {approval_where} "
+        f"ORDER BY sector, buyer, title",
+        [week_start.isoformat(), week_end.isoformat()] + scope_params + owner_params + approval_params,
     ).fetchall()
 
     doc = Document()
@@ -302,10 +331,12 @@ def generate_monthly_report(
     scope_where, scope_params = in_scope_filter_sql(conn)
     owner_clause = " AND owner = ?" if owner else ""
     owner_params = [owner] if owner else []
+    approval_where, approval_params = _post_approval_scope_sql()
     rows = conn.execute(
         f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        f"AND ({scope_where}){owner_clause} ORDER BY sector, buyer, title",
-        [month_start.isoformat(), month_end.isoformat()] + scope_params + owner_params,
+        f"AND ({scope_where}){owner_clause} AND {approval_where} "
+        f"ORDER BY sector, buyer, title",
+        [month_start.isoformat(), month_end.isoformat()] + scope_params + owner_params + approval_params,
     ).fetchall()
 
     doc = Document()
