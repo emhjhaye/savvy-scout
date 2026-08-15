@@ -15,6 +15,7 @@ guidance placeholders rather than guessed at:
 """
 
 import json
+import re
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -317,13 +318,19 @@ def generate_monthly_report(
         by_sector.setdefault(row["sector"] or "Unclassified", []).append(row)
 
     def _value_to_float(value_text):
+        # Regression (2026-08-15): indicative_value isn't always a single
+        # number -- OCDS ranges look like "GBP 1100000 to 1100000". Blindly
+        # concatenating every digit character (the old approach) mashed
+        # both numbers of a range into one, producing nonsense totals in
+        # the hundreds of billions. Extract each separate numeric token and
+        # average a two-number range instead.
         if not value_text:
             return 0.0
-        digits = "".join(c for c in value_text if c.isdigit() or c == ".")
-        try:
-            return float(digits) if digits else 0.0
-        except ValueError:
+        tokens = re.findall(r"\d+\.?\d*", value_text)
+        if not tokens:
             return 0.0
+        numbers = [float(t) for t in tokens]
+        return sum(numbers) / len(numbers)
 
     t1 = doc.add_table(rows=1, cols=3)
     t1.style = "Table Grid"

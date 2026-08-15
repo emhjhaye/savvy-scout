@@ -131,6 +131,22 @@ def test_weekly_report_uses_phase2_reasoning_and_product_mapping(conn, tmp_path)
     assert "Corax" in text
 
 
+def test_monthly_report_handles_value_ranges_without_mashing_digits(conn, tmp_path):
+    # Regression (2026-08-15): "GBP 1100000 to 1100000" was being reduced to
+    # a single blob of concatenated digits ("11000001100000" -> ~£11
+    # trillion) instead of parsed as two numbers and averaged.
+    _insert_notice(
+        conn, ref="REF-RANGE", title="Ranged value opportunity",
+        indicative_value="GBP 1100000 to 1100000",
+        first_published_at="2026-08-05T09:00:00+00:00",
+    )
+    path = generate_monthly_report(conn, date(2026, 8, 1), str(tmp_path))
+    text = _all_paragraph_and_cell_text(Document(path))
+    assert "£1,100,000" in text
+    assert "£11,000,001,100,000" not in text
+    assert "trillion" not in text.lower()
+
+
 def test_monthly_report_buckets_sectors_and_decisions(conn, tmp_path):
     month_start = date(2026, 8, 1)
     _insert_notice(
