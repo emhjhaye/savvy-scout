@@ -680,3 +680,26 @@ def sweep_now():
         "success",
     )
     return redirect(url_for("home.index"))
+
+
+@home_bp.route("/generate-reports-now", methods=["POST"])
+@login_required
+def generate_reports_now():
+    # Lazy import: savvy_scout.scheduler pulls in reporting.reports, which
+    # imports savvy_scout.dashboard.scope_filter -- importing that at module
+    # load time here would re-enter this still-initializing dashboard
+    # package and circular-import.
+    from savvy_scout.scheduler import run_monthly_report_job, run_weekly_report_job
+
+    settings = current_app.config["SAVVY_SCOUT_SETTINGS"]
+    run_weekly_report_job()
+    run_monthly_report_job()
+    if settings.report_recipient_email:
+        flash("Weekly and Monthly Trifork reports generated and emailed.", "success")
+    else:
+        flash(
+            "Weekly and Monthly Trifork reports generated in the reports folder. "
+            "Set REPORT_RECIPIENT_EMAIL to have them emailed automatically.",
+            "success",
+        )
+    return redirect(url_for("home.index"))

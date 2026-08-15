@@ -537,6 +537,16 @@
           <div><strong>Next sweep:</strong> {{ sweep_note.get('next_run', '8:00 AM UK time daily') }}</div>
         </div>
       </li>
+      <li>
+        <form action="{{ url_for('home.generate_reports_now') }}" method="post">
+          <button class="sidebar-sweep-button" type="submit" title="Generate Trifork reports now" aria-label="Generate Trifork reports now">
+            <span class="nav-icon" aria-hidden="true">📄</span><span class="nav-label">Generate reports now</span>
+          </button>
+        </form>
+        <div class="sidebar-sweep-note">
+          <div><strong>Auto-runs:</strong> Fridays 4pm &amp; 1st of month, UK time</div>
+        </div>
+      </li>
     </ul>
   </div>
 
