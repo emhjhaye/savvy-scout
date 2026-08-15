@@ -1,5 +1,14 @@
-﻿"""Phase 1 triage gates (SPEC.md A3), five gates plus Filter 3, built on the
-decisions you made on the flagged disagreements:
+﻿"""Phase 1 triage gates (SPEC.md A3), five gates plus Filter 3.
+
+Authoritative gate order (SavvyScout_Gate_Logic_Final.md, 2026-08-15,
+supersedes every earlier gate-order document -- three different orders were
+in use before this one; this is the one to trust):
+
+  Gate 1  Buyer in scope     -- contracting authority against sector buyer lists
+  Gate 2  CPV codes          -- notice CPV codes against verified/inferred/disqualifier lists
+  Gate 3  Framework status   -- open procurement, call-off, or establishment
+  Gate 4  Window             -- is the bidding/engagement window still open
+  Gate 5  Sector boundary    -- boundary rules where a buyer sits between two desks
 
 - Gate 1 owner map: Energy = Mark. Ambiguous or contested sector = FLAG to
   Victoria (Maddy routing from the references is retired, Maddy left the
@@ -9,27 +18,24 @@ decisions you made on the flagged disagreements:
   unsure" FLAG-to-Victoria call for this specific case. Still gets a human
   double-check like every other FAIL (2026-07-28 clarification: the gates
   can misclassify, so no FAIL skips owner review, this one included).
-- Gate 2 (2026-08-15, Mark's correction, load-bearing): default is PASS.
-  A 111-notice triage run produced zero clean Phase 1 passes because this
-  gate required exact matching language (an unconditional-pass term, or a
-  generic term specifically paired with a coupling term) before granting
-  PASS -- "evidence required to pass" logic, backwards from the account
-  principle that only three things fail an opportunity: wrong type of
-  work, an inaccessible framework, a closed window. Now any digital/
-  software/data/platform signal at all -- an unconditional-pass term, a
-  generic term alone, or a capability/product coupling term alone -- is
-  sufficient. Only genuinely non-digital text (no signal, no supporting
-  CPV evidence) FLAGs. A CPV DISQUALIFIER match is still the only CPV-based
-  FAIL; a sector-CPV-scope mismatch alone is corroboration only, not a
-  fail condition.
-- Gate 5 (2026-08-15, Mark's correction, load-bearing): default is PASS.
-  Most notices don't narrate their own procurement mechanics; that silence
-  is normal, not evidence of a blocking framework. Only FAILs on a
-  confirmed, named, inaccessible framework call-off. The previous MAYBE
-  (UK1/UK2)/FLAG (otherwise) default on no framework language is removed.
-- Gate 5 is also judged on the primary CPV code (folded into Gate 2's CPV
-  evidence, see above). Additional CPV codes are recorded for reference
-  and noted only when they conflict with the primary outcome.
+- Gate 2, CPV codes (2026-08-15, final correction -- explicitly does NOT
+  adopt a default-PASS loosening here, unlike Gate 3 below): CPV alone is
+  not reliable enough to carry a blanket PASS. FAIL only on a DISQUALIFIERS
+  list match (33xxxx/32xxxx/85xxxx). PASS on a VERIFIED match, PASS+INFERRED
+  on an INFERRED match. 48xxxxxx packaged-software codes PASS only against a
+  named Trifork product (Corax, Tiris Messenger), otherwise FLAG. FLAG, do
+  not rate, on any CPV that matches no list at all -- never default to PASS
+  on an unresolved CPV; that discards a real signal that the requirement
+  doesn't sit cleanly in the account's mapped categories.
+- Gate 3, Framework status (2026-08-15, Mark's correction, load-bearing):
+  default is PASS. Most notices don't narrate their own procurement
+  mechanics; that silence is normal, not evidence of a blocking framework.
+  Only FAILs on a confirmed, named, inaccessible framework call-off.
+- Gate 5, Sector boundary: boundary rules for a notice whose type of work is
+  unclear from its own text -- FAILs on a bare industry keyword with no
+  digital/capability coupling, PASSes on an unconditional-pass term or a
+  properly-coupled generic term, FLAGs (routes to a human) when neither is
+  present. Never defaults to PASS on unclear text alone.
 - All gates always run and record a result; no short-circuit on first FAIL.
   The first non-PASS gate result, in gate order, is the headline outcome.
 - Filter 3 (scale/SI-prime dominance) is a separately agreed rule (15 June
@@ -64,11 +70,11 @@ logger = logging.getLogger(__name__)
 GATE_ORDER = ["gate1", "gate2", "gate3", "gate4", "gate5", "filter3"]
 
 GATE_NAMES = {
-    "gate1": "Buyer sector and owner",
-    "gate2": "Type of work (with CPV evidence)",
-    "gate3": "Notice stage",
+    "gate1": "Buyer in scope",
+    "gate2": "CPV codes",
+    "gate3": "Framework status",
     "gate4": "Window",
-    "gate5": "Framework status",
+    "gate5": "Sector boundary",
     "filter3": "Scale and incumbents",
 }
 
@@ -277,6 +283,58 @@ def gate2_type_of_work(
     return GateResult(
         "FLAG",
         f"{signal_reason} No supporting CPV match either; type of work unclear. CPV evidence: {cpv_reason}",
+    )
+
+
+def gate5_sector_boundary(conn: sqlite3.Connection, text_blob: str) -> GateResult:
+    """Gate 5, Sector boundary (SavvyScout_Gate_Logic_Final.md, 2026-08-15):
+    boundary rules for a notice whose type of work is unclear from its own
+    text. Deliberately does NOT default to PASS on unclear text -- that
+    loosening was only agreed for Gate 3 (Framework status), never here;
+    see the module docstring.
+
+    FAIL on a bare industry keyword with no digital/capability coupling, or
+    an explicit fail term. PASS on an unconditional-pass term, or a generic
+    term properly coupled to a sector/capability term. FLAG (route to a
+    human) when neither is present -- type of work genuinely unclear."""
+    if not text_blob:
+        return GateResult("FLAG", "No notice text to evaluate; type of work unclear.")
+
+    terms = conn.execute("SELECT term, category FROM config_gate2_terms").fetchall()
+
+    fail_matches = [t["term"] for t in terms if t["category"] == "fail" and contains_keyword(text_blob, t["term"])]
+    if fail_matches:
+        return GateResult("FAIL", f"Matched fail term(s): {', '.join(fail_matches)} -- wrong type of work.")
+
+    pass_matches = [
+        t["term"] for t in terms
+        if t["category"] == "unconditional_pass" and contains_keyword(text_blob, t["term"])
+    ]
+    if pass_matches:
+        return GateResult("PASS", f"Matched unconditional pass term(s): {', '.join(pass_matches)}.")
+
+    generic_matches = [
+        t["term"] for t in terms
+        if t["category"] == "generic_needs_coupling" and contains_keyword(text_blob, t["term"])
+    ]
+    if generic_matches:
+        coupling_rows = conn.execute("SELECT term FROM config_coupling_terms").fetchall()
+        coupled_terms = [r["term"] for r in coupling_rows if contains_keyword(text_blob, r["term"])]
+        if coupled_terms:
+            return GateResult(
+                "PASS",
+                f"Generic term(s) {generic_matches} coupled with sector/capability "
+                f"term(s): {coupled_terms}.",
+            )
+        return GateResult(
+            "FLAG",
+            f"Generic term(s) {generic_matches} present with no sector or capability "
+            "coupling; not auto-passed on generic language alone.",
+        )
+
+    return GateResult(
+        "FLAG",
+        "No Gate 5 keyword matched (pass, fail, or generic); type of work unclear, do not rate.",
     )
 
 
@@ -508,19 +566,14 @@ def run_gates(conn: sqlite3.Connection, notice_row: sqlite3.Row) -> dict[str, Ga
 
     results: dict[str, GateResult] = {}
     results["gate1"] = gate1_sector_owner(conn, notice_row["buyer"], text_blob)
-    # Gate 2's CPV evidence can be sector-scoped (config_sector_cpv_scope) --
-    # read the sector Gate 1 just found, not notice_row["sector"], which
-    # isn't written back to the row until after run_gates returns.
-    gate1_sector = results["gate1"].extra.get("sector")
-    results["gate2"] = gate2_type_of_work(
+    results["gate2"] = gate5_cpv(
         conn,
-        text_blob,
         notice_row["cpv_primary"],
         bool(notice_row["cpv_primary_inferred"]),
         cpv_additional,
-        sector=gate1_sector,
+        text_blob,
     )
-    results["gate3"] = gate3_notice_stage(notice_row["uk_stage"])
+    results["gate3"] = gate5_framework(conn, text_blob, notice_row["uk_stage"])
     results["gate4"] = gate4_window(
         notice_row["tender_status"],
         lot_statuses,
@@ -528,7 +581,7 @@ def run_gates(conn: sqlite3.Connection, notice_row: sqlite3.Row) -> dict[str, Ga
         notice_row["pme_due_date"],
         notice_row["future_notice_date"],
     )
-    results["gate5"] = gate5_framework(conn, text_blob, notice_row["uk_stage"])
+    results["gate5"] = gate5_sector_boundary(conn, text_blob)
     results["filter3"] = filter3_scale(conn, notice_row["indicative_value"], text_blob)
     return results
 
@@ -724,28 +777,29 @@ def triage_notice(conn: sqlite3.Connection, notice_id: int, actor: str = "system
     log_status_change(conn, notice_id, current_status.value, next_status.value, actor, reason)
 
     # Auto-close a TO_REVIEW FAIL instead of waiting on a human, but only for
-    # cases with no real judgment call involved (2026-07-28 decisions):
+    # cases with no real judgment call involved:
     # - no sector/owner assigned: no queue filters by owner=NULL, so it would
     #   sit there invisibly forever otherwise.
-    # - Gate 3 FAIL: only ever UK5 (award/closed) -- unambiguous, done.
+    # - Gate 2 FAIL: pure CPV disqualifier list match (33xxx/32xxx/85xxx) --
+    #   a deterministic list lookup, never a text heuristic (Gate 2 no
+    #   longer looks at notice text at all per the final gate-order doc).
+    # - Gate 3 FAIL: a named framework call-off Trifork isn't a member of --
+    #   unambiguous.
     # - Gate 4 FAIL: only ever an already closed/awarded tender (complete,
     #   cancelled, withdrawn, unsuccessful, with no further stage expected)
     #   -- also unambiguous, nothing left to bid on.
-    # - Gate 2 FAIL specifically from a sector-scoped CPV mismatch: a plain
-    #   number-prefix comparison, not a keyword heuristic that could be wrong.
-    # A fuzzy FAIL with an owner already assigned (e.g. a Gate 2 text-based
-    # fail term, or the global non-scoped CPV list) still gets a real
-    # owner's double-check as before -- those calls can be wrong.
+    # A fuzzy FAIL still gets a real owner's double-check as before -- only
+    # Gate 5 (Sector boundary) can FAIL on a text heuristic, and those calls
+    # can be wrong.
     # Checked across ALL gates, not just whichever one won the headline --
-    # a notice can independently FAIL two gates at once (e.g. a text-based
-    # Gate 2 fail term AND an already-closed Gate 4), and headline_outcome
+    # a notice can independently FAIL two gates at once, and headline_outcome
     # only surfaces the first one in gate order. If ANY gate is a
     # deterministic FAIL, auto-reject regardless of which gate is headlined.
     refreshed = conn.execute("SELECT owner FROM notices WHERE id = ?", (notice_id,)).fetchone()
     is_deterministic_fail = (
-        gate_results["gate3"].outcome == "FAIL"
-        or gate_results["gate4"].outcome == "FAIL"  # only ever an already closed/awarded tender
-        or (gate_results["gate2"].outcome == "FAIL" and gate_results["gate2"].extra.get("cpv_scope_fail"))
+        gate_results["gate2"].outcome == "FAIL"
+        or gate_results["gate3"].outcome == "FAIL"
+        or gate_results["gate4"].outcome == "FAIL"
     )
     if next_status == Status.TO_REVIEW and (refreshed["owner"] is None or is_deterministic_fail):
         validate_transition(Status.TO_REVIEW, Status.REJECTED)

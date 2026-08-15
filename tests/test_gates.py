@@ -340,10 +340,13 @@ def test_triage_sample_notice_end_to_end(conn, sample_ocds_package):
 
     headline = triage_notice(conn, notice_id)
 
-    # Gate 1 passes (Rail and Transport, owner Mark) but Gate 2 fails on
-    # "managed service", which comes before Gates 3-5 in gate order, so it's
-    # the headline regardless of the real clock at test time (Gate 4 is
-    # date-dependent and deliberately not asserted here).
+    # Gate 1 passes (Rail and Transport, owner Mark). Gate 2 (pure CPV,
+    # final gate-order doc) FLAGs -- this notice's CPV isn't on any
+    # documented list, not a FAIL, since Gate 2 no longer reads notice text
+    # at all. "Managed service" (wrong type of work) is caught at Gate 5
+    # (Sector boundary) instead, which still wins the headline as FAIL
+    # regardless of the real clock at test time (Gate 4 is date-dependent
+    # and deliberately not asserted here).
     assert headline == "FAIL"
 
     row = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,)).fetchone()
@@ -357,4 +360,5 @@ def test_triage_sample_notice_end_to_end(conn, sample_ocds_package):
     assert len(gate_rows) == 6
     outcomes = {r["gate_number"]: r["outcome"] for r in gate_rows}
     assert outcomes["gate1"] == "PASS"
-    assert outcomes["gate2"] == "FAIL"
+    assert outcomes["gate2"] == "FLAG"
+    assert outcomes["gate5"] == "FAIL"
