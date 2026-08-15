@@ -129,7 +129,28 @@ def test_gate2_cpv48_sector_scoped_still_requires_named_product(conn):
         cpv_primary="48000000",
         sector="NHS and Healthcare",
     )
-    assert result.outcome != "PASS"
+    assert result.outcome == "FLAG"
+
+
+def test_gate2_sector_cpv_scope_mismatch_no_longer_fails(conn):
+    # 2026-08-15, Mark's correction: a sector-CPV-scope mismatch alone is
+    # corroboration only, never a fail condition. A genuinely non-digital
+    # CPV outside Energy's 72/48 range, with no text signal either, should
+    # FLAG (not FAIL) for a human type-of-work call.
+    result = gate2_type_of_work(
+        conn, "unrelated procurement text", cpv_primary="79713000", sector="Energy",
+    )
+    assert result.outcome == "FLAG"
+
+
+def test_gate2_disqualifier_cpv_still_fails_regardless_of_sector_scope(conn):
+    # A genuine DISQUALIFIER CPV (33xxx medical goods) is still the only
+    # CPV-based fail condition, even though it also falls outside Energy's
+    # configured 72/48 range.
+    result = gate2_type_of_work(
+        conn, "unrelated procurement text", cpv_primary="33140000", sector="Energy",
+    )
+    assert result.outcome == "FAIL"
 
 
 def test_gate2_cpv48_sector_scoped_passes_with_corax(conn):
@@ -155,9 +176,12 @@ def test_gate2_unconditional_pass_term(conn):
     assert result.outcome == "PASS"
 
 
-def test_gate2_generic_term_uncoupled_flags(conn):
+def test_gate2_generic_term_alone_now_passes(conn):
+    # 2026-08-15, Mark's correction: a generic term no longer needs pairing
+    # with a coupling term -- any digital/software/data/platform signal at
+    # all is sufficient for PASS (previously FLAGged as "uncoupled").
     result = gate2_type_of_work(conn, "seeking a new platform for our business")
-    assert result.outcome == "FLAG"
+    assert result.outcome == "PASS"
 
 
 def test_gate2_generic_term_coupled_with_sector_passes(conn):
@@ -193,14 +217,19 @@ def test_gate3_direct_procurement_passes(conn):
     assert result.outcome == "PASS"
 
 
-def test_gate3_pme_no_framework_is_maybe(conn):
+def test_gate3_pme_no_framework_now_passes(conn):
+    # 2026-08-15, Mark's correction: no framework language at all defaults
+    # to PASS (previously MAYBE at UK1/UK2) -- silence on procurement
+    # mechanics is normal, not evidence of a blocking framework.
     result = gate3_framework(conn, "we are seeking market input on our future route", "UK2")
-    assert result.outcome == "MAYBE"
+    assert result.outcome == "PASS"
 
 
-def test_gate3_unclear_non_pme_flags(conn):
+def test_gate3_unclear_non_pme_now_passes(conn):
+    # 2026-08-15, Mark's correction: same default-to-PASS applies outside
+    # UK1/UK2 too (previously FLAGged as "unclear").
     result = gate3_framework(conn, "we are seeking market input on our future route", "UK3")
-    assert result.outcome == "FLAG"
+    assert result.outcome == "PASS"
 
 
 # --- Gate 4: window (fixed dates, not real "now", to keep this deterministic) --

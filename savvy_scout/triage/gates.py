@@ -9,11 +9,27 @@ decisions you made on the flagged disagreements:
   unsure" FLAG-to-Victoria call for this specific case. Still gets a human
   double-check like every other FAIL (2026-07-28 clarification: the gates
   can misclassify, so no FAIL skips owner review, this one included).
-- Gate 2: platform/digital/data are generic and require a sector or
-  capability/product coupling term to PASS; uncoupled = FLAG, not PASS.
-  Fail list unchanged.
-- Gate 5: judged on the primary CPV code. Additional CPV codes are recorded
-  for reference and noted only when they conflict with the primary outcome.
+- Gate 2 (2026-08-15, Mark's correction, load-bearing): default is PASS.
+  A 111-notice triage run produced zero clean Phase 1 passes because this
+  gate required exact matching language (an unconditional-pass term, or a
+  generic term specifically paired with a coupling term) before granting
+  PASS -- "evidence required to pass" logic, backwards from the account
+  principle that only three things fail an opportunity: wrong type of
+  work, an inaccessible framework, a closed window. Now any digital/
+  software/data/platform signal at all -- an unconditional-pass term, a
+  generic term alone, or a capability/product coupling term alone -- is
+  sufficient. Only genuinely non-digital text (no signal, no supporting
+  CPV evidence) FLAGs. A CPV DISQUALIFIER match is still the only CPV-based
+  FAIL; a sector-CPV-scope mismatch alone is corroboration only, not a
+  fail condition.
+- Gate 5 (2026-08-15, Mark's correction, load-bearing): default is PASS.
+  Most notices don't narrate their own procurement mechanics; that silence
+  is normal, not evidence of a blocking framework. Only FAILs on a
+  confirmed, named, inaccessible framework call-off. The previous MAYBE
+  (UK1/UK2)/FLAG (otherwise) default on no framework language is removed.
+- Gate 5 is also judged on the primary CPV code (folded into Gate 2's CPV
+  evidence, see above). Additional CPV codes are recorded for reference
+  and noted only when they conflict with the primary outcome.
 - All gates always run and record a result; no short-circuit on first FAIL.
   The first non-PASS gate result, in gate order, is the headline outcome.
 - Filter 3 (scale/SI-prime dominance) is a separately agreed rule (15 June
@@ -169,6 +185,21 @@ def gate2_type_of_work(
     cpv_additional: list[str] | None = None,
     sector: str | None = None,
 ) -> GateResult:
+    """2026-08-15, Mark's correction (Trifork scouting skill v0.3, Section 3
+    Gate 2, load-bearing): default is PASS. A 111-notice triage run produced
+    zero clean Phase 1 passes because this gate required exact matching
+    language (an unconditional-pass term, or a generic term specifically
+    paired with a coupling term) before granting PASS -- "evidence required
+    to pass" logic, backwards from the account principle that only three
+    things fail an opportunity: wrong type of work, an inaccessible
+    framework, a closed window. Now: any digital/software/data/platform
+    signal at all (an unconditional-pass term, a generic term on its own,
+    or a capability/product coupling term on its own) is sufficient for
+    PASS. Only a genuinely non-digital notice -- no text signal AND no
+    supporting CPV evidence -- gets FLAGged for a human type-of-work call.
+    A CPV DISQUALIFIER match (33xxx/32xxx) is still the only CPV-based FAIL;
+    a sector-CPV-scope mismatch alone no longer fails, it's corroboration
+    only, same tier as an unclassified CPV."""
     if cpv_additional is None:
         cpv_additional = []
 
@@ -178,87 +209,75 @@ def gate2_type_of_work(
         t["term"] for t in terms if t["category"] == "fail" and contains_keyword(text_blob, t["term"])
     ]
     if fail_matches:
-        return GateResult("FAIL", f"Matched fail term(s): {', '.join(fail_matches)}.")
+        return GateResult("FAIL", f"Matched fail term(s): {', '.join(fail_matches)} -- wrong type of work.")
 
     pass_matches = [
         t["term"] for t in terms
         if t["category"] == "unconditional_pass" and contains_keyword(text_blob, t["term"])
     ]
-    base_outcome = "FLAG"
-    base_reason = "No Gate 2 keyword matched (pass, fail or generic); type of work unclear, do not rate."
-
-    if pass_matches:
-        base_outcome = "PASS"
-        base_reason = f"Matched unconditional pass term(s): {', '.join(pass_matches)}."
-
     generic_matches = [
         t["term"] for t in terms
         if t["category"] == "generic_needs_coupling" and contains_keyword(text_blob, t["term"])
     ]
-    if generic_matches:
-        coupling_rows = conn.execute("SELECT term FROM config_coupling_terms").fetchall()
-        coupled_terms = [r["term"] for r in coupling_rows if contains_keyword(text_blob, r["term"])]
-        if coupled_terms:
-            base_outcome = "PASS"
-            base_reason = (
-                f"Generic term(s) {generic_matches} coupled with sector/capability "
-                f"term(s): {coupled_terms}."
-            )
-        else:
-            base_outcome = "FLAG"
-            base_reason = (
-                f"Generic term(s) {generic_matches} present with no sector or capability "
-                "coupling; not auto-passed on generic language alone."
-            )
+    coupling_rows = conn.execute("SELECT term FROM config_coupling_terms").fetchall()
+    coupled_terms = [r["term"] for r in coupling_rows if contains_keyword(text_blob, r["term"])]
+    has_text_signal = bool(pass_matches or generic_matches or coupled_terms)
+    signal_reason = (
+        f"Digital/software signal: unconditional pass term(s) {pass_matches}, generic term(s) "
+        f"{generic_matches}, capability/product term(s) {coupled_terms}."
+        if has_text_signal
+        else "No digital, software, data, or platform signal found in the notice text."
+    )
 
     # Compatibility path for older callers/tests that only exercise the text
     # heuristic. Real notice triage passes CPV evidence in, so this preserves
     # the current app path while keeping the legacy helper surface working.
     if cpv_primary is None and cpv_primary_inferred is False and not cpv_additional:
-        return GateResult(base_outcome, base_reason)
+        return GateResult("PASS" if has_text_signal else "FLAG", signal_reason)
 
-    # CPV is evidence inside Gate 2 (v1.5), not a separate gate.
-    scoped_prefixes = _sector_cpv_scope(conn, sector)
-    if not cpv_primary:
-        cpv_outcome, cpv_reason = "FLAG", "No CPV code present on this notice; unlisted, do not rate."
-    elif scoped_prefixes is not None:
-        allowed_display = ", ".join(f"{p}xxx" for p in scoped_prefixes)
-        if any(cpv_primary.startswith(p) for p in scoped_prefixes):
-            if cpv_primary.startswith("48"):
-                # 48xxxxxx is never a blanket pass, even inside an allowed
-                # sector CPV range -- it still needs a named Trifork
-                # product match (Corax/Tiris Messenger), so defer to the
-                # same conditional lookup used outside sector scoping.
-                cpv_outcome, cpv_reason = _lookup_cpv(conn, cpv_primary, text_blob)
-            else:
-                cpv_outcome = "PASS"
-                cpv_reason = f"CPV {cpv_primary} is in {sector}'s allowed range ({allowed_display})."
-        else:
-            cpv_outcome = "FAIL"
-            cpv_reason = f"CPV {cpv_primary} is outside {sector}'s allowed range ({allowed_display} only)."
-        if cpv_primary_inferred:
-            cpv_reason += " (primary CPV inferred)"
-    else:
+    # CPV evidence: the global verified/inferred/disqualifier/48xxx-product
+    # check (_lookup_cpv) is always authoritative for a CPV-based FAIL.
+    # Sector CPV scope is corroboration only -- it can support a PASS but
+    # never itself produce a FAIL (Mark's correction above).
+    cpv_disqualified = False
+    cpv_corroborates_pass = False
+    cpv_reason = "No CPV code present on this notice."
+    if cpv_primary:
         cpv_outcome, cpv_reason = _lookup_cpv(conn, cpv_primary, text_blob)
         if cpv_primary_inferred:
             cpv_reason += " (primary CPV inferred)"
+        if cpv_outcome == "FAIL":
+            cpv_disqualified = True
+        elif cpv_outcome in ("PASS", "INFERRED_FIT"):
+            cpv_corroborates_pass = True
+        elif not _cpv_has_explicit_entry(conn, cpv_primary):
+            # Sector-scope corroboration only applies to a genuinely
+            # unclassified CPV -- never overrides a FLAG that
+            # config_cpv_lists deliberately assigned for a specific reason
+            # (e.g. bare 48xxxxxx with no named Trifork product match,
+            # which must stay FLAG, never a blanket pass).
+            scoped_prefixes = _sector_cpv_scope(conn, sector)
+            if scoped_prefixes is not None:
+                allowed_display = ", ".join(f"{p}xxx" for p in scoped_prefixes)
+                if any(cpv_primary.startswith(p) for p in scoped_prefixes):
+                    cpv_corroborates_pass = True
+                    cpv_reason += f" (in {sector}'s configured range: {allowed_display})"
+                else:
+                    cpv_reason += (
+                        f" (outside {sector}'s configured range {allowed_display}; not itself "
+                        "disqualifying, per Mark's 15 August 2026 correction)"
+                    )
 
-    # A sector-scoped CPV mismatch is a deterministic number comparison, not
-    # a fuzzy keyword judgment call -- flagged so triage_notice can skip the
-    # human double-check for this specific case, same as an unowned notice.
-    cpv_scope_fail = scoped_prefixes is not None and cpv_outcome == "FAIL"
+    if cpv_disqualified:
+        return GateResult("FAIL", f"CPV disqualifier: {cpv_reason}")
 
-    if base_outcome == "FAIL" or cpv_outcome == "FAIL":
-        return GateResult(
-            "FAIL", f"{base_reason} CPV evidence: {cpv_reason}",
-            extra={"cpv_scope_fail": cpv_scope_fail},
-        )
+    if has_text_signal or cpv_corroborates_pass:
+        return GateResult("PASS", f"{signal_reason} CPV evidence: {cpv_reason}")
 
-    if base_outcome == "PASS" and cpv_outcome in ("PASS", "INFERRED_FIT"):
-        return GateResult("PASS", f"{base_reason} CPV evidence: {cpv_reason}")
-
-    # Anything uncertain in either source stays a FLAG and proceeds to Phase 2.
-    return GateResult("FLAG", f"{base_reason} CPV evidence: {cpv_reason}")
+    return GateResult(
+        "FLAG",
+        f"{signal_reason} No supporting CPV match either; type of work unclear. CPV evidence: {cpv_reason}",
+    )
 
 
 def gate3_notice_stage(uk_stage: str) -> GateResult:
@@ -270,6 +289,15 @@ def gate3_notice_stage(uk_stage: str) -> GateResult:
 
 
 def gate5_framework(conn: sqlite3.Connection, text_blob: str, uk_stage: str) -> GateResult:
+    """2026-08-15, Mark's correction (Trifork scouting skill v0.3, Section 3
+    Gate 3, load-bearing): default is PASS. Most notices do not narrate
+    their own procurement mechanics; that silence is normal, not evidence
+    of a blocking framework -- the previous MAYBE (UK1/UK2)/FLAG (otherwise)
+    default on no framework language was "evidence required to pass" logic,
+    backwards from the account principle that only a confirmed, named,
+    inaccessible framework fails this gate. uk_stage is kept as a parameter
+    for backward compatibility with callers, but no longer changes the
+    outcome here."""
     keywords = conn.execute("SELECT term, category FROM config_framework_keywords").fetchall()
 
     call_off_matches = [
@@ -306,17 +334,11 @@ def gate5_framework(conn: sqlite3.Connection, text_blob: str, uk_stage: str) -> 
     if direct_matches:
         return GateResult("PASS", f"Direct open procurement detected ({', '.join(direct_matches)}).")
 
-    if uk_stage in ("UK1", "UK2"):
-        return GateResult(
-            "MAYBE",
-            "Route not yet decided: UK1/UK2 preliminary market engagement stage with no "
-            "framework stated yet.",
-        )
-
     return GateResult(
-        "FLAG",
-        "Framework status unclear; no framework or direct-procurement language detected, "
-        "do not guess.",
+        "PASS",
+        "No framework or direct-procurement language detected; treated as open by default "
+        "per Mark's 15 August 2026 correction -- absence of procurement-route jargon is not "
+        "evidence of a blocking framework.",
     )
 
 
@@ -403,6 +425,19 @@ def gate4_window(
     return GateResult(
         "PASS", f"Open (status: {tender_status or 'UNVERIFIED'}, deadline: {deadline or 'none stated'})."
     )
+
+
+def _cpv_has_explicit_entry(conn: sqlite3.Connection, code: str) -> bool:
+    """True if config_cpv_lists has any row (exact code or 2-digit prefix)
+    for this CPV -- distinguishes a genuinely unclassified CPV from one
+    _lookup_cpv deliberately returned FLAG for (e.g. bare 48xxxxxx with no
+    named product match), which must never be overridden by sector-scope
+    corroboration alone."""
+    row = conn.execute(
+        "SELECT 1 FROM config_cpv_lists WHERE cpv_code = ? OR cpv_code = ? LIMIT 1",
+        (code, code[:2]),
+    ).fetchone()
+    return row is not None
 
 
 def _lookup_cpv(conn: sqlite3.Connection, code: str, text_blob: str) -> tuple[str, str]:
