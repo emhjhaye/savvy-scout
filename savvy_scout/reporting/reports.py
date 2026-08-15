@@ -25,6 +25,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
+
 RED = RGBColor(0xAF, 0x1F, 0x23)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 DARK = RGBColor(0x11, 0x11, 0x11)
@@ -214,10 +216,11 @@ def generate_weekly_report(
     (Monday), across all sectors/owners -- a short-form flag only, per the
     template. Filename: 'Trifork Scouting Weekly Report YYYY-MM-DD.docx'."""
     week_end = week_start + timedelta(days=7)
+    scope_where, scope_params = in_scope_filter_sql(conn)
     rows = conn.execute(
-        "SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        "ORDER BY sector, buyer, title",
-        (week_start.isoformat(), week_end.isoformat()),
+        f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
+        f"AND ({scope_where}) ORDER BY sector, buyer, title",
+        [week_start.isoformat(), week_end.isoformat()] + scope_params,
     ).fetchall()
 
     doc = Document()
@@ -289,10 +292,11 @@ def generate_monthly_report(
     else:
         month_end = date(month_start.year, month_start.month + 1, 1)
 
+    scope_where, scope_params = in_scope_filter_sql(conn)
     rows = conn.execute(
-        "SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        "ORDER BY sector, buyer, title",
-        (month_start.isoformat(), month_end.isoformat()),
+        f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
+        f"AND ({scope_where}) ORDER BY sector, buyer, title",
+        [month_start.isoformat(), month_end.isoformat()] + scope_params,
     ).fetchall()
 
     doc = Document()

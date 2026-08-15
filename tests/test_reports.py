@@ -20,6 +20,7 @@ def _insert_notice(conn, **overrides):
         "status": "NEW",
         "sector": "Central and Local Government",
         "owner": "Kanvesh",
+        "cpv_primary": "72212000",  # within Central and Local Government's allowed 72/48 CPV scope
         "indicative_value": "GBP 250000",
         "first_published_at": datetime.now(timezone.utc).isoformat(),
         "first_seen_at": datetime.now(timezone.utc).isoformat(),
@@ -79,6 +80,27 @@ def test_weekly_report_includes_notice_published_in_window(conn, tmp_path):
     assert "Out-of-window opportunity" not in text
     assert "Some Trust" in text
     assert "Awaiting Phase 2 AI scope read" in text
+
+
+def test_weekly_report_excludes_out_of_scope_notices(conn, tmp_path):
+    # Regression: an earlier version pulled every notice published this
+    # week regardless of sector match, dumping the entire raw sweep
+    # (including totally unmatched buyers) into a client-facing report.
+    _insert_notice(
+        conn,
+        ref="REF-UNMATCHED",
+        title="Agricultural equipment supply",
+        buyer="Agriculture and Horticulture Development Board",
+        sector=None,
+        owner=None,
+        cpv_primary=None,
+        first_published_at="2026-08-11T09:00:00+00:00",
+        status="REJECTED",
+    )
+    path = generate_weekly_report(conn, date(2026, 8, 10), str(tmp_path))
+    text = _all_paragraph_and_cell_text(Document(path))
+    assert "Agriculture and Horticulture Development Board" not in text
+    assert "No new opportunities were identified this week." in text
 
 
 def test_weekly_report_uses_phase2_reasoning_and_product_mapping(conn, tmp_path):
