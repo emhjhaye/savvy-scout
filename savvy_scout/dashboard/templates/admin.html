@@ -60,6 +60,22 @@
   </div>
 </div>
 
+<div class="card">
+  <div class="card-header">
+    <h3 style="margin: 0; font-size: 15px;">Tools</h3>
+  </div>
+  <div class="card-body" style="display: flex; flex-direction: column; gap: 10px;">
+    <form method="post" action="{{ url_for('admin.retriage_escalated') }}" style="display: flex; align-items: center; gap: 10px;" onsubmit="return confirm('Re-evaluate Phase 1 gates for every Escalated-to-Victoria notice and send it back to Phase 2 for owner review?');">
+      <button type="submit" class="btn btn-secondary btn-sm">Retriage escalated notices</button>
+      <span style="font-size: 12px; color: var(--text-muted);">After a gate/config correction: re-evaluates Phase 1 for every notice awaiting Victoria's decision and sends it back to Phase 2 for owner review.</span>
+    </form>
+    <form method="post" action="#" onsubmit="event.preventDefault(); const id = prompt('Notice ID to delete:'); if (id) { this.action = '/admin/notices/' + id + '/delete'; if (confirm('Permanently delete notice ' + id + ' and all its records?')) this.submit(); }" style="display: flex; align-items: center; gap: 10px;">
+      <button type="submit" class="btn btn-secondary btn-sm">Delete a notice by ID</button>
+      <span style="font-size: 12px; color: var(--text-muted);">Removes a test/duplicate notice entirely (all gate results, triage runs, assessments, history). Use Reject for a real triage decision instead.</span>
+    </form>
+  </div>
+</div>
+
 {% for slug, label, table_names in groups %}
 <h3 class="admin-group-title" id="group-{{ slug }}">{{ label }}</h3>
 

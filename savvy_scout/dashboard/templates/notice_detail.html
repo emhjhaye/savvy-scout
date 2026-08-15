@@ -139,24 +139,6 @@
           <button type="submit" class="btn btn-reject submit-btn" style="display:none">Submit</button>
         </form>
       </span>
-
-      <span class="action-group" style="display: inline-flex; gap: 4px; align-items: center;">
-        <button class="btn btn-park show-input-btn" onclick="toggleAction(this, 'det-park')">⊙ Park</button>
-        <form method="post" action="{{ url_for('queues.park', notice_id=notice['id']) }}" style="display:inline">
-          <input type="text" name="reason" class="action-input" id="det-park" placeholder="Reason required" required style="width: 200px;">
-          <button type="submit" class="btn btn-park submit-btn" style="display:none">Submit</button>
-        </form>
-      </span>
-
-      {% if s == 'AWAITING_PHASE2_APPROVAL' %}
-      <span class="action-group" style="display: inline-flex; gap: 4px; align-items: center;">
-        <button class="btn btn-victoria show-input-btn" onclick="toggleAction(this, 'det-vic')">⬆ Victoria</button>
-        <form method="post" action="{{ url_for('queues.mark_victoria_decision', notice_id=notice['id']) }}" style="display:inline">
-          <input type="text" name="reason" class="action-input" id="det-vic" placeholder="Why escalate?" required style="width: 200px;">
-          <button type="submit" class="btn btn-victoria submit-btn" style="display:none">Submit</button>
-        </form>
-      </span>
-      {% endif %}
     </div>
     {% elif s == 'PHASE2_SCOPED' %}
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 16px; background: rgba(139,92,246,0.1); border-radius: 8px; border: 1px solid rgba(139,92,246,0.3); margin-top: 8px;">

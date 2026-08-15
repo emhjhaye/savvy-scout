@@ -177,7 +177,6 @@
             <button type="submit" class="btn btn-approve btn-sm">✓ Overturn to Pass</button>
           </form>
           <button class="btn btn-reject btn-sm" onclick="showReason(this, 'r-{{ n['id'] }}')">✕ Reject</button>
-          <button class="btn btn-park btn-sm" onclick="showReason(this, 'p-{{ n['id'] }}')">⊙ Park</button>
         </div>
 
         <div id="r-{{ n['id'] }}" class="reason-form">
@@ -186,15 +185,6 @@
             <div class="reason-form-btns">
               <button type="submit" class="btn btn-reject btn-sm">Confirm Reject</button>
               <button type="button" class="btn btn-secondary btn-sm" onclick="hideReason('r-{{ n['id'] }}')">Cancel</button>
-            </div>
-          </form>
-        </div>
-        <div id="p-{{ n['id'] }}" class="reason-form">
-          <form method="post" action="{{ url_for('queues.park', notice_id=n['id']) }}">
-            <input type="text" name="reason" placeholder="Reason for parking" required>
-            <div class="reason-form-btns">
-              <button type="submit" class="btn btn-park btn-sm">Confirm Park</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="hideReason('p-{{ n['id'] }}')">Cancel</button>
             </div>
           </form>
         </div>
@@ -254,25 +244,11 @@
             <button type="submit" class="btn btn-approve btn-sm" title="Sends to Victoria for her decision">✓ Approve</button>
           </form>
           <button class="btn btn-reject btn-sm" onclick="showReason(this, 'p2r-{{ n['id'] }}')">✕ Reject</button>
-          <button class="btn btn-park btn-sm" onclick="showReason(this, 'p2p-{{ n['id'] }}')">⊙ Park</button>
-          <button class="btn btn-victoria btn-sm" onclick="showReason(this, 'p2v-{{ n['id'] }}')">⬆ Victoria</button>
         </div>
         <div id="p2r-{{ n['id'] }}" class="reason-form">
           <form method="post" action="{{ url_for('queues.reject', notice_id=n['id']) }}">
             <input type="text" name="reason" placeholder="Reason" required>
             <div class="reason-form-btns"><button type="submit" class="btn btn-reject btn-sm">Reject</button><button type="button" class="btn btn-secondary btn-sm" onclick="hideReason('p2r-{{ n['id'] }}')">✕</button></div>
-          </form>
-        </div>
-        <div id="p2p-{{ n['id'] }}" class="reason-form">
-          <form method="post" action="{{ url_for('queues.park', notice_id=n['id']) }}">
-            <input type="text" name="reason" placeholder="Reason" required>
-            <div class="reason-form-btns"><button type="submit" class="btn btn-park btn-sm">Park</button><button type="button" class="btn btn-secondary btn-sm" onclick="hideReason('p2p-{{ n['id'] }}')">✕</button></div>
-          </form>
-        </div>
-        <div id="p2v-{{ n['id'] }}" class="reason-form">
-          <form method="post" action="{{ url_for('queues.mark_victoria_decision', notice_id=n['id']) }}">
-            <input type="text" name="reason" placeholder="Why escalate?" required>
-            <div class="reason-form-btns"><button type="submit" class="btn btn-victoria btn-sm">Escalate</button><button type="button" class="btn btn-secondary btn-sm" onclick="hideReason('p2v-{{ n['id'] }}')">✕</button></div>
           </form>
         </div>
       </div>

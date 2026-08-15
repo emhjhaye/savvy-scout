@@ -13,6 +13,7 @@ from werkzeug.security import generate_password_hash
 
 from savvy_scout.dashboard.auth import get_db
 from savvy_scout.logging_util import log_audit
+from savvy_scout.workflow.approvals import bring_back_escalated_for_gate_retriage
 from savvy_scout.notifications import NotificationError, send_account_invite_email
 
 admin_bp = Blueprint("admin", __name__)
@@ -691,3 +692,52 @@ def delete_user(user_id):
 
     flash(f"Removed {row['display_name']}'s account.")
     return redirect(url_for("admin.users_index"))
+
+
+@admin_bp.route("/retriage-escalated", methods=["POST"])
+@login_required
+def retriage_escalated():
+    """One-time-use bulk action for a gate/config correction: sends every
+    ESCALATED_TO_VICTORIA notice back to PHASE2_SCOPED with its Phase 1
+    gates freshly re-evaluated, so owners review the updated result before
+    anything reaches Victoria again."""
+    if not (_has_correction_authority() or _is_super_admin()):
+        flash("Only Victoria, Kanvesh or the admin account can do this.", "error")
+        return redirect(url_for("queues.index"))
+    conn = get_db()
+    counts = bring_back_escalated_for_gate_retriage(conn, actor=current_user.display_name)
+    flash(
+        f"Re-evaluated Phase 1 gates and sent {counts['sent_to_phase2']} of "
+        f"{counts['checked']} escalated notice(s) back to Phase 2 for owner review.",
+    )
+    return redirect(url_for("admin.index"))
+
+
+@admin_bp.route("/notices/<int:notice_id>/delete", methods=["POST"])
+@login_required
+def delete_notice(notice_id):
+    """Permanently removes a notice and every row referencing it (gate
+    results, triage runs, Phase 2 assessment, escalation briefs, status
+    history, audit log) -- for cleaning up test/duplicate entries, not for
+    real triage decisions (use Reject for those)."""
+    if not (_has_correction_authority() or _is_super_admin()):
+        flash("Only Victoria, Kanvesh or the admin account can do this.", "error")
+        return redirect(url_for("queues.index"))
+    conn = get_db()
+    row = conn.execute("SELECT ref, title FROM notices WHERE id = ?", (notice_id,)).fetchone()
+    if row is None:
+        flash("Notice not found.", "error")
+        return redirect(url_for("admin.index"))
+
+    conn.execute("DELETE FROM gate_results WHERE notice_id = ?", (notice_id,))
+    conn.execute("DELETE FROM triage_runs WHERE notice_id = ?", (notice_id,))
+    conn.execute("DELETE FROM phase2_assessments WHERE notice_id = ?", (notice_id,))
+    conn.execute("DELETE FROM escalation_briefs WHERE notice_id = ?", (notice_id,))
+    conn.execute("DELETE FROM status_history WHERE notice_id = ?", (notice_id,))
+    conn.execute("DELETE FROM audit_log WHERE entity_type = 'notice' AND entity_id = ?", (str(notice_id),))
+    conn.execute("DELETE FROM notices WHERE id = ?", (notice_id,))
+    conn.commit()
+    log_audit(conn, "notice", str(notice_id), "notice_deleted", current_user.display_name, f"Deleted {row['ref']} -- {row['title']}")
+
+    flash(f"Deleted notice {row['ref']} -- {row['title']}.")
+    return redirect(url_for("admin.index"))

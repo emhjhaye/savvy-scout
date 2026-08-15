@@ -421,6 +421,37 @@ def retriage_and_route(
     return headline_out
 
 
+def bring_back_escalated_for_gate_retriage(
+    conn: sqlite3.Connection, actor: str = "system_gate_order_correction"
+) -> dict:
+    """One-time-use bulk operation for a gate/config correction (e.g. the
+    2026-08-15 gate-order fix, SavvyScout_Gate_Logic_Final.md): every notice
+    currently ESCALATED_TO_VICTORIA had its Phase 1 gates evaluated under
+    whatever gate logic was live at the time, which may now be stale. Re-runs
+    Phase 1 (retriage_notice -- records a fresh triage_run/gate_results,
+    doesn't touch status) for each, then sends it back to PHASE2_SCOPED so
+    the owner reviews the refreshed Phase 1 result -- and, if they still
+    approve, a fresh Phase 2 scope read -- before it reaches Victoria again.
+    Existing Phase 2 assessment/escalation-brief rows are left as historical
+    audit trail, not deleted. Returns counts of what changed."""
+    candidate_ids = [
+        row["id"] for row in conn.execute(
+            "SELECT id FROM notices WHERE status = ?", (Status.ESCALATED_TO_VICTORIA.value,)
+        ).fetchall()
+    ]
+    counts = {"checked": len(candidate_ids), "sent_to_phase2": 0}
+    for notice_id in candidate_ids:
+        retriage_notice(conn, notice_id, actor)
+        notice_row = _get_notice(conn, notice_id)
+        _transition(
+            conn, notice_row, Status.PHASE2_SCOPED, actor,
+            "Sent back to Phase 2 for owner review: Phase 1 gates re-evaluated under an "
+            "updated gate configuration",
+        )
+        counts["sent_to_phase2"] += 1
+    return counts
+
+
 def retriage_all_unmatched(conn: sqlite3.Connection, actor: str = "system_retriage") -> dict:
     """Re-triages every notice with no sector assigned that's either still in
     TO_REVIEW or was auto-rejected for having no owner (the "obviously out of
