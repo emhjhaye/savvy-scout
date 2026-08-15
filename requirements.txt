@@ -21,3 +21,4 @@ reportlab>=4.0  # Internal Addendum / Capture Brief PDF generation, see escalati
 pypdf>=4.0  # PDF text extraction in tests only (test_brief.py), not used at runtime
 waitress>=3.0  # production WSGI server, see wsgi.py
 APScheduler>=3.10  # in-process daily sweep, see scheduler.py
+python-docx>=1.1  # Weekly/Monthly Trifork reports, see reporting/reports.py
