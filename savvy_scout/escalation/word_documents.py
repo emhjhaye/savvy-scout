@@ -484,8 +484,19 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
             _set_paragraph(paragraph, requirement_areas[index])
         else:
             _remove_paragraph(paragraph)
-    for paragraph in paragraphs[32:36]:
-        _remove_paragraph(paragraph)
+    # paragraphs[32:36] are the sample's dedicated evidence slots -- one named
+    # Trifork case study per paragraph, backing up the capability_fit claim
+    # in paragraph 31 with something concrete Victoria can check. Previously
+    # these were unconditionally deleted instead of populated, which is why
+    # Section 6 read as one generic sentence instead of the sample's cited
+    # case-study list.
+    case_study_paragraphs = paragraphs[32:36]
+    case_studies = [row.get("capability_mapping", MISSING) for row in context["capability_mapping"]][:4]
+    for index, paragraph in enumerate(case_study_paragraphs):
+        if index < len(case_studies):
+            _set_paragraph(paragraph, case_studies[index])
+        else:
+            _remove_paragraph(paragraph)
 
     _set_footer(document, context)
 
