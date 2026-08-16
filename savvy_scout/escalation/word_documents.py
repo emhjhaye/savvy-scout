@@ -185,8 +185,8 @@ def _timetable_rows(context):
 def _immediate_action_rows(context):
     actions = context["immediate_actions"]
     if actions:
-        return [(action, context["owner_name"]) for action in actions]
-    return [(_recommended_action(context), context["owner_name"])]
+        return [(item.get("action", MISSING), item.get("owner_and_deadline", MISSING)) for item in actions]
+    return [(_recommended_action(context), f"{context['owner_name']}, Bid Savvy Solutions Ltd")]
 
 
 def _capability_mapping_rows(context):
@@ -230,7 +230,9 @@ def _final_decision_text(context):
     actions = context["immediate_actions"]
     action_text = ""
     if actions:
-        numbered = " ".join(f"({i}) {action.rstrip('.')}." for i, action in enumerate(actions, start=1))
+        numbered = " ".join(
+            f"({i}) {item.get('action', MISSING).rstrip('.')}." for i, item in enumerate(actions, start=1)
+        )
         action_text = f" If GO, immediate actions are: {numbered}"
     rationale = context["recommendation_rationale"]
     reasoning = f" {rationale}" if rationale != MISSING else ""

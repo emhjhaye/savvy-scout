@@ -251,7 +251,18 @@ SCOPE_READ_SCHEMA = {
             "type": "object",
             "properties": {
                 "decision": {"type": "string", "enum": ["PROCEED", "DO_NOT_PROCEED", "PARK_FOR_MORE_INFO"]},
-                "immediate_actions": {"type": "array", "items": {"type": "string"}},
+                "immediate_actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "action": {"type": "string"},
+                            "owner_and_deadline": {"type": "string"},
+                        },
+                        "required": ["action", "owner_and_deadline"],
+                        "additionalProperties": False,
+                    },
+                },
                 "rationale": {"type": "string"},
             },
             "required": ["decision", "immediate_actions", "rationale"],
@@ -348,8 +359,14 @@ Rules:
     disadvantage", "could weaken Trifork's bid", or any similar formulation where the stated
     reason is track record, size, references or clearance.
 
-12. immediate_actions: concrete next steps with owners and dates where known, not vague
-    encouragement.
+12. immediate_actions: concrete next steps, each paired with owner_and_deadline naming WHO does it
+    and BY WHEN. owner_and_deadline is a role, never a person's own name -- "Trifork commercial
+    lead with Bid Savvy support", "Trifork engineering and product leads", "Bid Savvy" -- paired
+    with a real date where the notice gives one (e.g. the submission/engagement deadline), or a
+    short relative window ("This week") where it doesn't. Never leave owner_and_deadline as just
+    a name with no timeframe, and never assign a Trifork-side commercial or technical action to
+    the Bid Savvy scout personally -- Bid Savvy coordinates and scouts, Trifork commits capability
+    and makes commercial decisions.
 
 13. executive_summary, key_terms, engagement_model, procurement_timetable, decision_framework:
     you are writing directly for Victoria Milan to make a GO / NO-GO / Park call. Write like you
