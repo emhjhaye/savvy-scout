@@ -108,7 +108,14 @@ def export_victoria_package(
     )
     week_start = most_recent_monday(today)
     weekly_path = generate_weekly_report(conn, week_start, str(weekly_dir), owner=owner)
-    month_start = date(today.year, today.month, 1)
+    # Previous complete month, matching run_monthly_report_job's own logic
+    # (2026-08-16 fix): the current calendar month isn't finished yet, so a
+    # report for it is premature -- confirmed live, this produced a "Monthly
+    # Report 2026-08" on 16 August, days before the month even ended.
+    if today.month == 1:
+        month_start = date(today.year - 1, 12, 1)
+    else:
+        month_start = date(today.year, today.month - 1, 1)
     monthly_path = generate_monthly_report(conn, month_start, str(monthly_dir), owner=owner)
     return {
         "opportunities_with_artifacts": artifact_count // 3,
