@@ -200,6 +200,59 @@ def _capability_mapping_rows(context):
     )]
 
 
+def _final_decision_text(context):
+    actions = context["immediate_actions"]
+    action_text = ""
+    if actions:
+        numbered = " ".join(f"({i}) {action.rstrip('.')}." for i, action in enumerate(actions, start=1))
+        action_text = f" If GO, immediate actions are: {numbered}"
+    rationale = context["recommendation_rationale"]
+    reasoning = f" {rationale}" if rationale != MISSING else ""
+    return (
+        f"Decision required: GO, NO-GO or Park for {context['title']} "
+        f"(ref {context['notice_reference']}).{action_text} Owner recommendation: "
+        f"{_recommended_action(context)}{reasoning} — {context['owner_name']}."
+    )
+
+
+_NOTICE_TYPE_LABELS = {
+    "UK1": "UK1 Pipeline notice",
+    "UK2": "UK2 Preliminary Market Engagement",
+    "UK3": "UK3 Planned procurement notice",
+    "UK4": "UK4 Tender notice",
+    "UK5": "UK5 Award notice",
+}
+
+
+def _notice_type_label(context):
+    label = _NOTICE_TYPE_LABELS.get(context["uk_stage"])
+    if label:
+        return label
+    return context["notice_type"] if context["notice_type"] != MISSING else "Not stated in the notice"
+
+
+def _route_to_market_text(context):
+    if context["route_to_market"] != MISSING:
+        return context["route_to_market"]
+    return context["engagement_model"].get("model") or MISSING
+
+
+def _sources_text(context):
+    parts = [context["source_portal"]]
+    if context["notice_reference"] != MISSING:
+        parts.append(f"reference {context['notice_reference']}")
+    if context["published_date"] != MISSING:
+        parts.append(f"published {context['published_date']}")
+    return ", ".join(part for part in parts if part and part != MISSING)
+
+
+def _urgency_text(context):
+    # context["urgency"] leads with an emoji marker for dashboard scanning
+    # (see derive_urgency) -- these documents are plain professional prose,
+    # matching the sample, which uses no emoji anywhere.
+    return context["urgency"].split(" ", 1)[-1]
+
+
 def _format_value(context):
     if context["value_estimate"] == MISSING or str(context["value_estimate"]) in ("0", "0.0"):
         return "Not stated"
@@ -286,7 +339,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
     _set_cell(
         tables[0].cell(0, 0),
         f"INTERNAL ADDENDUM | NOT FOR CLIENT DISTRIBUTION\n{context['title']}\n"
-        f"{context['buyer']} | Reference: {context['notice_reference']} | {context['urgency']}\n"
+        f"{context['buyer']} | Reference: {context['notice_reference']} | {_urgency_text(context)}\n"
         f"Prepared by {context['owner_name']}, Bid Savvy Solutions Ltd | {context['generated_at'][:10]}",
     )
     _set_cell(
@@ -347,12 +400,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         _set_cell(tables[6].cell(row_index, 1), why_text)
     _trim_table_rows(tables[6], max(1, len(asks)))
 
-    _set_cell(
-        tables[7].cell(0, 0),
-        f"Decision required: GO, NO-GO or Park for {context['title']} "
-        f"(ref {context['notice_reference']}). Owner recommendation: "
-        f"{_recommended_action(context)} — {context['owner_name']}.",
-    )
+    _set_cell(tables[7].cell(0, 0), _final_decision_text(context))
     _set_paragraph(
         document.paragraphs[-1],
         f"Prepared by {context['owner_name']}, Bid Savvy Solutions Ltd | Internal use only | "
@@ -372,7 +420,7 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     _set_cell(
         tables[0].cell(0, 0),
         f"CAPTURE BRIEF\n{context['title']}\n{context['buyer']} | Reference: "
-        f"{context['notice_reference']} | {context['urgency']}\nPrepared for Victoria Milan | "
+        f"{context['notice_reference']} | {_urgency_text(context)}\nPrepared for Victoria Milan | "
         f"{context['generated_at'][:10]}",
     )
     executive_view = context["executive_summary_ai"].get("executive_view") or _first_sentences(
@@ -383,7 +431,7 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         f"Why this matters: {executive_view} "
         f"Decision point: {_recommended_action(context)} PROVISIONAL — FOR VALIDATION.",
     )
-    _set_cell(tables[2].cell(0, 0), f"Submission deadline: {context['submission_deadline']} | {context['urgency']}")
+    _set_cell(tables[2].cell(0, 0), f"Submission deadline: {context['submission_deadline']} | {_urgency_text(context)}")
 
     key_terms = _key_terms_rows(context) or [("None", "The notice is in plain English; no jargon requires explanation.")]
     for row_index in range(1, min(len(tables[3].rows), len(key_terms) + 1)):
@@ -395,8 +443,8 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     info = (
         ("Contracting authority", context["buyer"]),
         ("Reference", context["notice_reference"]),
-        ("Source", context["source_portal"]),
-        ("Sector", context["sector"]),
+        ("Notice type", _notice_type_label(context)),
+        ("Route to market", _route_to_market_text(context)),
         ("Framework status", context["framework_status"]),
         ("Estimated contract value", _format_value(context)),
         ("Main CPV codes", ", ".join(context["cpv_codes"]) or MISSING),
@@ -439,13 +487,13 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         ("Opportunity", context["title"]), ("Buyer", context["buyer"]),
         ("Reference", context["notice_reference"]),
         ("Estimated value", _format_value(context)),
-        ("Route to market", context["route_to_market"]),
+        ("Route to market", _route_to_market_text(context)),
         ("Capability fit", context["ai_read"]["capability_fit"]),
         ("Competitive risk", context["ai_read"]["competitor_position"]),
         ("Right to win", context["ai_read"]["right_to_win"]),
         ("Recommended action", _recommended_action(context)),
         ("Next deadline", context["submission_deadline"]),
-        ("Sources", context["source_portal"]),
+        ("Sources", _sources_text(context)),
     )
     for row_index, (field, value) in enumerate(summary, start=1):
         _set_cell(tables[9].cell(row_index, 0), field)

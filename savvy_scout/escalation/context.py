@@ -191,6 +191,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         "capability_mapping": capability_mapping,
         "positioning_points": positioning_points,
         "immediate_actions": recommendation.get("immediate_actions", []),
+        "recommendation_rationale": _display(recommendation.get("rationale")),
         "executive_summary_ai": executive_summary,
         "key_terms": key_terms,
         "scope_of_requirement": scope_of_requirement,
