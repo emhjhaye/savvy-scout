@@ -19,7 +19,14 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from savvy_scout.escalation.brief import DEFAULT_BRIEFS_DIR, build_capture_brief, build_internal_addendum, record_brief
+from savvy_scout.escalation.brief import (
+    DEFAULT_BRIEFS_DIR,
+    build_capture_brief,
+    build_internal_addendum,
+    build_original_notice_pdf,
+    record_brief,
+)
+from savvy_scout.export.trifork_pipeline import update_configured_trifork_pipeline
 from savvy_scout.logging_util import log_audit, log_status_change
 from savvy_scout.models.notice import Status, validate_transition
 from savvy_scout.notifications import NotificationError, send_victoria_escalation_email
@@ -35,6 +42,15 @@ class NotAuthorized(PermissionError):
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _sync_trifork_tracker(conn: sqlite3.Connection) -> None:
+    try:
+        result = update_configured_trifork_pipeline(conn)
+        if result:
+            logger.info("Trifork pipeline tracker updated at %s", result["output_path"])
+    except Exception:
+        logger.exception("Owner decision completed, but Trifork pipeline tracker sync failed")
 
 
 def _get_notice(conn: sqlite3.Connection, notice_id: int) -> sqlite3.Row:
@@ -106,8 +122,8 @@ def escalate_to_victoria(
     trigger_reason: str,
     briefs_dir: str = DEFAULT_BRIEFS_DIR,
 ) -> str:
-    """Moves a notice to ESCALATED_TO_VICTORIA, generates the Internal
-    Addendum (v1.5), and emails Victoria directly (2026-08-09) -- previously
+    """Moves a notice to ESCALATED_TO_VICTORIA, generates its review
+    document set, and emails Victoria directly (2026-08-09) -- previously
     the only notification route was the manual "Send Brief Email" button,
     which needs Microsoft Graph configured (it isn't in every environment).
     This SMTP-based email is best-effort: a missing Victoria email or a down
@@ -115,12 +131,17 @@ def escalate_to_victoria(
     notice_row = _get_notice(conn, notice_id)
     _transition(conn, notice_row, Status.ESCALATED_TO_VICTORIA, actor, trigger_reason)
 
-    docx_path = build_internal_addendum(conn, notice_id, output_dir=briefs_dir)
-    record_brief(conn, notice_id, trigger_reason, docx_path, actor, brief_type="INTERNAL_ADDENDUM")
+    addendum_path = build_internal_addendum(conn, notice_id, output_dir=briefs_dir)
+    record_brief(conn, notice_id, trigger_reason, addendum_path, actor, brief_type="INTERNAL_ADDENDUM")
+    capture_path = build_capture_brief(conn, notice_id, output_dir=briefs_dir)
+    record_brief(conn, notice_id, trigger_reason, capture_path, actor, brief_type="CAPTURE_BRIEF")
+    notice_path = build_original_notice_pdf(conn, notice_id, output_dir=briefs_dir)
+    record_brief(conn, notice_id, trigger_reason, notice_path, actor, brief_type="ORIGINAL_NOTICE")
     log_audit(conn, "notice", str(notice_id), "escalation_brief_generated", actor, trigger_reason)
+    _sync_trifork_tracker(conn)
 
     _notify_victoria_of_escalation(conn, notice_id, trigger_reason)
-    return docx_path
+    return addendum_path
 
 
 def _notify_victoria_of_escalation(conn: sqlite3.Connection, notice_id: int, trigger_reason: str) -> None:
@@ -198,7 +219,13 @@ def reject_notice(
         raise ValueError("A rejection reason is required.")
     notice_row = _get_notice(conn, notice_id)
     _require_owner_or_victoria(notice_row, actor_display_name, actor_is_victoria)
+    was_owner_phase2_review = (
+        Status(notice_row["status"]) == Status.AWAITING_PHASE2_APPROVAL
+        and actor_display_name in ("Mark", "Kanvesh", "Hammad")
+    )
     _transition(conn, notice_row, Status.REJECTED, actor_display_name, reason)
+    if was_owner_phase2_review:
+        _sync_trifork_tracker(conn)
 
 
 def approve_phase2(
@@ -210,8 +237,8 @@ def approve_phase2(
 ) -> None:
     """Owner confirms a Phase 2 result (2026-07-30 policy): owner approval is
     a gate BEFORE Victoria, never a substitute for her -- only
-    victoria_decision('approve') reaches APPROVED and auto-drafts the Capture
-    Brief. The AI's PURSUE/FLAG/DECLINE rating is informative only; the owner
+    victoria_decision('approve') reaches APPROVED. The AI's
+    PURSUE/FLAG/DECLINE rating is informative only; the owner
     reviews it and any of the three ratings can be approved by the sector
     owner -- their own judgment can overrule a DECLINE. Approving always
     sends the notice to Victoria for her decision, with the same escalation
@@ -311,16 +338,21 @@ def victoria_decision(
 
     if decision == "approve":
         _transition(conn, notice_row, Status.APPROVED, actor_display_name, reason)
-        # v1.5: Capture Brief is generated only on Victoria GO.
-        docx_path = build_capture_brief(conn, notice_id)
-        record_brief(
-            conn,
-            notice_id,
-            "victoria_go_capture_brief",
-            docx_path,
-            actor_display_name,
-            brief_type="CAPTURE_BRIEF",
-        )
+        capture_brief = conn.execute(
+            "SELECT id FROM escalation_briefs WHERE notice_id = ? AND brief_type = 'CAPTURE_BRIEF' "
+            "ORDER BY id DESC LIMIT 1",
+            (notice_id,),
+        ).fetchone()
+        if capture_brief is None:
+            capture_path = build_capture_brief(conn, notice_id)
+            record_brief(
+                conn,
+                notice_id,
+                "victoria_go_capture_brief",
+                capture_path,
+                actor_display_name,
+                brief_type="CAPTURE_BRIEF",
+            )
         notice_row = _get_notice(conn, notice_id)
         _transition(conn, notice_row, Status.CAPTURE_BRIEF_DRAFTED, actor_display_name, "Capture brief drafted")
     elif decision == "park":

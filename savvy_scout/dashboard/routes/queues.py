@@ -266,7 +266,8 @@ def index():
                 SELECT MAX(id) FROM phase2_assessments WHERE notice_id = n.id
             )
             LEFT JOIN escalation_briefs eb ON eb.id = (
-                SELECT MAX(id) FROM escalation_briefs WHERE notice_id = n.id
+                SELECT MAX(id) FROM escalation_briefs
+                WHERE notice_id = n.id AND brief_type = 'INTERNAL_ADDENDUM'
             )
             WHERE n.status = 'ESCALATED_TO_VICTORIA'
               AND {in_scope_where}
@@ -350,9 +351,16 @@ def notice_detail(notice_id):
     ).fetchall()
 
     escalation_brief = conn.execute(
-        "SELECT * FROM escalation_briefs WHERE notice_id = ? ORDER BY id DESC LIMIT 1",
+        "SELECT * FROM escalation_briefs WHERE notice_id = ? AND brief_type = 'INTERNAL_ADDENDUM' "
+        "ORDER BY id DESC LIMIT 1",
         (notice_id,),
     ).fetchone()
+    brief_artifacts = conn.execute(
+        "SELECT * FROM escalation_briefs WHERE notice_id = ? ORDER BY "
+        "CASE brief_type WHEN 'INTERNAL_ADDENDUM' THEN 1 WHEN 'CAPTURE_BRIEF' THEN 2 "
+        "WHEN 'ORIGINAL_NOTICE' THEN 3 ELSE 4 END, id DESC",
+        (notice_id,),
+    ).fetchall()
 
     try:
         lot_statuses = json.loads(notice["lot_statuses"]) if notice["lot_statuses"] else []
@@ -401,6 +409,7 @@ def notice_detail(notice_id):
         phase2_assessment=phase2_assessment,
         status_history=status_history,
         escalation_brief=escalation_brief,
+        brief_artifacts=brief_artifacts,
         lot_statuses=lot_statuses,
         cpv_additional=cpv_additional,
         bid_documents=bid_documents,
@@ -677,7 +686,8 @@ def send_escalation_email(notice_id):
 
     conn = get_db()
     brief = conn.execute(
-        "SELECT * FROM escalation_briefs WHERE notice_id = ? ORDER BY id DESC LIMIT 1", (notice_id,)
+        "SELECT * FROM escalation_briefs WHERE notice_id = ? AND brief_type = 'INTERNAL_ADDENDUM' "
+        "ORDER BY id DESC LIMIT 1", (notice_id,)
     ).fetchone()
     notice = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,)).fetchone()
     if not brief or not notice:

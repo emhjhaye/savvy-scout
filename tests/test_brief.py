@@ -1,6 +1,6 @@
 from pypdf import PdfReader
 
-from savvy_scout.escalation.brief import build_brief, record_brief
+from savvy_scout.escalation.brief import build_brief, build_original_notice_pdf, record_brief
 from savvy_scout.models.notice import Notice
 from savvy_scout.sources.ocds_parser import ParsedNotice
 from savvy_scout.sweep.dedupe import upsert_notice
@@ -87,6 +87,17 @@ def test_build_brief_includes_provisional_label_when_assessment_exists(conn, tmp
 
     assert "PROVISIONAL, FOR VALIDATION" in full_text
     assert "Is this really out of sector?" in full_text
+
+
+def test_build_original_notice_pdf_preserves_source_and_full_text(conn, tmp_path):
+    notice_id = _make_notice(conn)
+    path = build_original_notice_pdf(conn, notice_id, output_dir=str(tmp_path / "briefs"))
+    full_text = _pdf_text(path)
+
+    assert path.endswith("_original_notice.pdf")
+    assert "ORIGINAL NOTICE" in full_text
+    assert "https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1" in full_text
+    assert "real-time payments platform integration with smart grid billing systems" in full_text
 
 
 def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):

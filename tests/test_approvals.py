@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -235,9 +236,23 @@ def test_victoria_decision_approve(conn, tmp_path):
     approvals.mark_victoria_decision(
         conn, notice_id, "Mark", "Want a second opinion", briefs_dir=str(tmp_path / "briefs")
     )
+    artifacts = conn.execute(
+        "SELECT brief_type, docx_path FROM escalation_briefs WHERE notice_id = ? ORDER BY brief_type",
+        (notice_id,),
+    ).fetchall()
+    assert {row["brief_type"] for row in artifacts} == {
+        "CAPTURE_BRIEF", "INTERNAL_ADDENDUM", "ORIGINAL_NOTICE"
+    }
+    assert all(Path(row["docx_path"]).exists() for row in artifacts)
+
     approvals.victoria_decision(conn, notice_id, "Victoria", "approve", "Looks fine")
     row = conn.execute("SELECT status FROM notices WHERE id = ?", (notice_id,)).fetchone()
     assert row["status"] == Status.CAPTURE_BRIEF_DRAFTED.value
+    capture_count = conn.execute(
+        "SELECT COUNT(*) FROM escalation_briefs WHERE notice_id = ? AND brief_type = 'CAPTURE_BRIEF'",
+        (notice_id,),
+    ).fetchone()[0]
+    assert capture_count == 1
 
 
 def test_victoria_decision_reject_requires_reason(conn, tmp_path):
