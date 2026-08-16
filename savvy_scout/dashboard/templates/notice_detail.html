@@ -339,6 +339,9 @@
         {% if cpv_additional %}
         <div class="cb-body">Additional CPV Codes: {{ cpv_additional | join(', ') }}</div>
         {% endif %}
+        {% if notice['text_blob'] %}
+        <div class="cb-body" style="white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 10px;">{{ notice['text_blob'] }}</div>
+        {% endif %}
       </div>
     </div>
 
