@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 
 from openpyxl import load_workbook
 
-from savvy_scout.export.trifork_pipeline import HEADERS, update_trifork_pipeline
+from savvy_scout.escalation.brief import record_brief
+from savvy_scout.export.trifork_pipeline import HEADERS, TOTAL_COLUMNS, update_trifork_pipeline
 
 
 def _notice(conn, ref, target, actor="Mark", rating="FLAG"):
@@ -48,7 +49,7 @@ def test_tracker_preserves_template_and_upserts_by_notice_reference(conn, tmp_pa
     assert second["inserted"] == 0
     assert second["updated"] == 3
     workbook = load_workbook(output, data_only=False)
-    assert tuple(workbook["Flag"].cell(2, column).value for column in range(1, 20)) == HEADERS
+    assert tuple(workbook["Flag"].cell(2, column).value for column in range(1, TOTAL_COLUMNS + 1)) == HEADERS
     assert workbook["Master Summary"]["B4"].value == "=COUNTA(Pass!A3:A1000)"
     references = {
         sheet_name: [workbook[sheet_name].cell(row, 1).value for row in range(3, workbook[sheet_name].max_row + 1)
@@ -60,6 +61,28 @@ def test_tracker_preserves_template_and_upserts_by_notice_reference(conn, tmp_pa
     assert references["Fail"] == ["REF-FAIL"]
     assert "REF-SYSTEM" not in references["Pass"] + references["Flag"] + references["Fail"]
     assert "REF-NO-ASSESSMENT" not in references["Pass"] + references["Flag"] + references["Fail"]
+
+
+def test_tracker_links_to_recorded_addendum_and_brief(conn, tmp_path):
+    notice_id = _notice(conn, "REF-LINKED", "ESCALATED_TO_VICTORIA", rating="FLAG")
+    tracker_dir = tmp_path / "Pipeline Tracker"
+    artifacts_dir = tmp_path / "Addendum and Brief per Phase 2 Pass & Flag Opportunities" / "01. Some Title"
+    artifacts_dir.mkdir(parents=True)
+    addendum_path = artifacts_dir / "Some_Title_Internal_Addendum.docx"
+    addendum_path.write_bytes(b"fake docx")
+    record_brief(conn, notice_id, "escalated", str(addendum_path), "test", "INTERNAL_ADDENDUM")
+    output = tracker_dir / "My_Trifork_Pipeline_Tracker.xlsx"
+
+    update_trifork_pipeline(conn, str(output))
+
+    workbook = load_workbook(output)
+    sheet = workbook["Flag"]
+    addendum_cell = sheet.cell(3, 20)
+    assert addendum_cell.value == "Open Internal Addendum"
+    assert addendum_cell.hyperlink is not None
+    assert "Internal_Addendum.docx" in addendum_cell.hyperlink.target
+    capture_cell = sheet.cell(3, 21)
+    assert capture_cell.value == "Not yet generated"
 
 
 def test_zero_value_is_presented_as_not_stated(conn, tmp_path):

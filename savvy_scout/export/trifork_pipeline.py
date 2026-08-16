@@ -20,7 +20,12 @@ HEADERS = (
     "SUBMISSION/ENGAGEMENT DEADLINE", "TRIAGE STATUS", "CAPABILITY FIT",
     "FRAMEWORK STATUS", "FILTER FLAGS (1/2/3)", "REASON / NOTES", "NEXT ACTION",
     "NEXT ACTION DATE", "OPEN FLAGS FOR VICTORIA",
+    # 2026-08-16, explicit request: quick-reference links to the actual
+    # generated documents, computed relative to the tracker's own folder so
+    # they still resolve once both are pulled onto a local machine together.
+    "INTERNAL ADDENDUM", "CAPTURE BRIEF",
 )
+TOTAL_COLUMNS = len(HEADERS)
 
 
 def _owner_reviewed_notice_ids(conn: sqlite3.Connection, owner: str | None = None) -> list[int]:
@@ -244,7 +249,27 @@ def _row_values(context, decision):
         next_action,
         action_date,
         _victoria_question(context, decision),
+        "Not yet generated",  # INTERNAL ADDENDUM -- overwritten with a real link below if one exists
+        "Not yet generated",  # CAPTURE BRIEF -- overwritten with a real link below if one exists
     ]
+
+
+def _brief_link(conn: sqlite3.Connection, notice_id: int, brief_type: str, tracker_dir: Path) -> str | None:
+    """Returns a path to the recorded brief file, relative to the tracker's
+    own folder, so the hyperlink still resolves once both are copied onto a
+    local machine together (see export_victoria_package, which puts the
+    tracker and the Addendum/Brief folder under the same root)."""
+    row = conn.execute(
+        "SELECT docx_path FROM escalation_briefs WHERE notice_id = ? AND brief_type = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (notice_id, brief_type),
+    ).fetchone()
+    if not row or not row["docx_path"]:
+        return None
+    try:
+        return os.path.relpath(row["docx_path"], start=str(tracker_dir))
+    except ValueError:
+        return row["docx_path"]  # different drive on Windows -- fall back to the raw path
 
 
 def _snapshot_styles(workbook):
@@ -252,7 +277,7 @@ def _snapshot_styles(workbook):
     for sheet_name in TRACKER_SHEETS:
         sheet = workbook[sheet_name]
         source_row = 3
-        snapshots[sheet_name] = [copy(sheet.cell(source_row, column)._style) for column in range(1, 20)]
+        snapshots[sheet_name] = [copy(sheet.cell(source_row, column)._style) for column in range(1, TOTAL_COLUMNS + 1)]
     return snapshots
 
 
@@ -260,7 +285,7 @@ def _clear_sample_rows(workbook):
     for sheet_name in CLEAR_SHEETS:
         sheet = workbook[sheet_name]
         for row in range(3, sheet.max_row + 1):
-            for column in range(1, 20):
+            for column in range(1, TOTAL_COLUMNS + 1):
                 sheet.cell(row, column).value = None
                 sheet.cell(row, column).hyperlink = None
 
@@ -268,7 +293,7 @@ def _clear_sample_rows(workbook):
 def _template_or_existing(output: Path):
     if output.exists():
         workbook = load_workbook(output)
-        headers = tuple(workbook["Flag"].cell(2, column).value for column in range(1, 20))
+        headers = tuple(workbook["Flag"].cell(2, column).value for column in range(1, TOTAL_COLUMNS + 1))
         if headers == HEADERS:
             return workbook, False
     return load_workbook(TEMPLATE_PATH), True
@@ -304,7 +329,7 @@ def update_trifork_pipeline(
         if old:
             old_sheet, old_row = old
             if old_sheet != target_name:
-                for column in range(1, 20):
+                for column in range(1, TOTAL_COLUMNS + 1):
                     workbook[old_sheet].cell(old_row, column).value = None
                 old = None
         if old:
@@ -331,6 +356,16 @@ def update_trifork_pipeline(
             source_url = _source_url(context)
             if column == 7 and source_url != MISSING:
                 cell.hyperlink = source_url
+            if column == 20:  # INTERNAL ADDENDUM
+                link = _brief_link(conn, notice_id, "INTERNAL_ADDENDUM", output.parent)
+                if link:
+                    cell.value = "Open Internal Addendum"
+                    cell.hyperlink = link
+            if column == 21:  # CAPTURE BRIEF
+                link = _brief_link(conn, notice_id, "CAPTURE_BRIEF", output.parent)
+                if link:
+                    cell.value = "Open Capture Brief"
+                    cell.hyperlink = link
         sheet.row_dimensions[row_number].height = 105
         existing[reference] = (target_name, row_number)
 
