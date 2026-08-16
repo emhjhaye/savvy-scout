@@ -146,6 +146,19 @@ SCOPE_READ_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        # Section 9 ("Solo or Partner Recommendation"): a genuine call on
+        # whether Trifork should respond alone or with a delivery partner at
+        # this stage, and why -- never a restatement of the overall PROCEED/
+        # PARK/DECLINE recommendation or a "prepared by" administrative line.
+        "solo_or_partner_recommendation": {
+            "type": "object",
+            "properties": {
+                "recommendation": {"type": "string"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["recommendation", "rationale"],
+            "additionalProperties": False,
+        },
         # Genuine GO/NO-GO decision points for Victoria, each framed as a
         # question with what a yes/no answer implies for the recommendation
         # -- not a restatement of asks (which are questions FOR Trifork/the
@@ -249,7 +262,7 @@ SCOPE_READ_SCHEMA = {
         "capability_fit", "competitor_position", "right_to_win", "overall", "open_questions",
         "capability_mapping", "positioning_points", "blockers", "asks", "recommendation",
         "executive_summary", "key_terms", "scope_of_requirement", "engagement_model",
-        "procurement_timetable", "decision_framework",
+        "procurement_timetable", "decision_framework", "solo_or_partner_recommendation",
     ],
     "additionalProperties": False,
 }
@@ -363,6 +376,12 @@ Rules:
       both fields.
     - procurement_timetable: only genuine dated (or explicitly-undated-but-named) milestones from
       the notice text itself, beyond the structured deadline fields you're separately given.
+    - solo_or_partner_recommendation: a genuine call on whether Trifork should respond alone or
+      with a delivery partner at THIS stage, and why (e.g. solo at an early market-engagement
+      stage to establish a direct relationship, versus needing a partner for scale, an existing
+      UK framework place, or specific delivery capacity). This is never a restatement of the
+      overall PROCEED/PARK/DECLINE recommendation and never an administrative "prepared by"
+      line -- it answers the specific question "alone or with someone else, and why".
     - decision_framework: 2-4 questions Victoria herself would weigh to decide GO/NO-GO/Park (for
       example, whether a stated risk is acceptable, whether the timeline allows a competitive
       response, whether the positioning points can realistically be addressed in time), each
@@ -500,9 +519,9 @@ def save_scope_read(
         "overall_rating, overall_reasoning, open_questions, "
         "capability_mapping, positioning_points, blockers, asks, recommendation, "
         "executive_summary, key_terms, scope_of_requirement, engagement_model, "
-        "procurement_timetable, decision_framework, "
+        "procurement_timetable, decision_framework, solo_or_partner_recommendation, "
         "model_used, created_at"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             notice_id,
             assessment["capability_fit"]["rating"],
@@ -525,6 +544,7 @@ def save_scope_read(
             json.dumps(assessment["engagement_model"]) if assessment.get("engagement_model") else None,
             json.dumps(assessment["procurement_timetable"]) if assessment.get("procurement_timetable") else None,
             json.dumps(assessment["decision_framework"]) if assessment.get("decision_framework") else None,
+            json.dumps(assessment["solo_or_partner_recommendation"]) if assessment.get("solo_or_partner_recommendation") else None,
             model_used,
             now,
         ),

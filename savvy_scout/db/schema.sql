@@ -352,7 +352,8 @@ CREATE TABLE IF NOT EXISTS phase2_assessments (
     scope_of_requirement TEXT,
     engagement_model TEXT,
     procurement_timetable TEXT,
-    decision_framework TEXT
+    decision_framework TEXT,
+    solo_or_partner_recommendation TEXT
 );
 
 -- Phase B: escalation briefs (B3). One row per auto-generated brief.

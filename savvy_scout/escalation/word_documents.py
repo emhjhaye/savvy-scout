@@ -212,6 +212,17 @@ def _format_value(context):
     return f"{symbol}{formatted}" if symbol else f"{formatted} {context['currency']}"
 
 
+def _solo_or_partner_text(context):
+    rec = context["solo_or_partner_recommendation"]
+    if rec.get("recommendation") or rec.get("rationale"):
+        return rec.get("recommendation") or MISSING, rec.get("rationale") or MISSING
+    return (
+        "Not yet assessed.",
+        "Revisit once Trifork's UK delivery capacity and any framework/partnering "
+        "requirements for this opportunity are confirmed.",
+    )
+
+
 def _recommended_action(context):
     overall = context["ai_read"]["overall"]
     if overall == "PURSUE":
@@ -457,8 +468,8 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         37: context["ai_read"].get("per_field_reasoning", {}).get("competitor_position", MISSING),
         38: f"Right to win: {context['ai_read']['right_to_win']}",
         39: context["ai_read"].get("per_field_reasoning", {}).get("right_to_win", MISSING),
-        46: _recommended_action(context),
-        47: f"Prepared for Victoria's GO / NO-GO / Park decision by {context['owner_name']}.",
+        46: _solo_or_partner_text(context)[0],
+        47: _solo_or_partner_text(context)[1],
         51: f"Prepared by {context['owner_name']}, Bid Savvy Solutions Ltd",
         52: "Confidential | Not for circulation beyond Trifork UK",
     }

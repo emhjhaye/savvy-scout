@@ -326,7 +326,7 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     # nullable; existing assessments just don't have them until re-run.
     for col in (
         "executive_summary", "key_terms", "scope_of_requirement", "engagement_model",
-        "procurement_timetable", "decision_framework",
+        "procurement_timetable", "decision_framework", "solo_or_partner_recommendation",
     ):
         if col not in assessment_cols:
             conn.execute(f"ALTER TABLE phase2_assessments ADD COLUMN {col} TEXT")

@@ -144,6 +144,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         engagement_model = _json_value(assessment["engagement_model"], {})
         procurement_timetable = _json_value(assessment["procurement_timetable"], [])
         decision_framework = _json_value(assessment["decision_framework"], [])
+        solo_or_partner = _json_value(assessment["solo_or_partner_recommendation"], {})
     else:
         ai_read = {
             "capability_fit": MISSING,
@@ -158,6 +159,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         capability_mapping, positioning_points = [], []
         executive_summary, key_terms, scope_of_requirement, engagement_model = {}, [], {}, {}
         procurement_timetable, decision_framework = [], []
+        solo_or_partner = {}
 
     framework_gate = next((gate for gate in gates if "framework" in gate["gate_name"].casefold()), None)
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -195,6 +197,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         "engagement_model": engagement_model,
         "procurement_timetable_ai": procurement_timetable,
         "decision_framework": decision_framework,
+        "solo_or_partner_recommendation": solo_or_partner,
         "recommended_next_action": _display(
             recommendation.get("decision") or (owner_decision["reason"] if owner_decision else None)
         ),
