@@ -67,20 +67,9 @@ CREATE TABLE IF NOT EXISTS notices (
     -- Set once, on first insert, and never touched again -- unlike
     -- published_at (the source release's own "date" field, which is its
     -- LAST-UPDATED timestamp and gets overwritten on every re-sweep, e.g.
-    -- when an old notice is amended, awarded, or cancelled). Sector
-    -- Performance/Notices by Source date the notice by this column so an
-    -- amendment to a 3-week-old notice doesn't make it look newly published
-    -- today.
+    -- when an old notice is amended, awarded, or cancelled).
     first_published_at TEXT,
-    -- Set at first insert when the release that introduced us to this
-    -- notice carried no reliable evidence of an original publish date --
-    -- an award, contract, amendment, or termination release, as opposed to
-    -- an actual tender/planning notice (2026-08-10: confirmed an
-    -- award-only release has no tenderPeriod or notice documents at all).
-    -- When true, first_published_at is left NULL and Sector
-    -- Performance/Notices by Source exclude the notice from every date
-    -- bucket entirely rather than mis-dating it as "published today"
-    -- (the day WE happened to first see it).
+    -- True when no reliable original publication date was present.
     publish_date_unknown INTEGER NOT NULL DEFAULT 0,
     first_seen_at TEXT NOT NULL,
     last_swept_at TEXT NOT NULL,
@@ -339,23 +328,12 @@ CREATE TABLE IF NOT EXISTS phase2_assessments (
     -- Internal Addendum sections C-F (2026-08-09, matches the reference
     -- document's exact table shapes): capability_mapping is a JSON array of
     -- {problem, capability} pairs (Section C, "Why this is a high fit");
-    -- blockers is a JSON array of {blocker, assessment} pairs (Section D --
-    -- ONLY genuine impediments: wrong type of work, a named framework
-    -- Trifork isn't on, a closed window, a required product Trifork lacks,
-    -- a pass/fail certification, or unpublished requirements. Per Victoria
-    -- Milan's ruling of 11 August 2026, UK track record/references/
-    -- clearance/staff scale are NEVER blockers -- see positioning_points);
-    -- asks is a JSON array of {ask, why_it_matters} pairs (Section E);
-    -- recommendation is a JSON object {decision, immediate_actions: [str],
-    -- rationale} (Section F). All nullable: assessments generated before
-    -- this migration keep working via the older rating/reasoning fields,
-    -- see escalation/brief.py's fallback rendering.
+    -- blockers is a JSON array of {blocker, assessment} pairs; asks is a
+    -- JSON array of {ask, why_it_matters} pairs; recommendation is a JSON
+    -- object {decision, immediate_actions: [str], rationale}.
     capability_mapping TEXT,
-    -- What a bid writer must handle to win -- UK-newness (reference-
-    -- building, partnering, presenting European proof points) belongs
-    -- here, never in blockers (2026-08-12, same ruling as above). JSON
-    -- array of {point, how_to_address} pairs, rendered as its own Internal
-    -- Addendum section between capability_mapping and blockers.
+    -- UK-newness, evidence positioning and partnering points belong here,
+    -- rather than being represented as hard blockers.
     positioning_points TEXT,
     blockers TEXT,
     asks TEXT,
@@ -371,7 +349,8 @@ CREATE TABLE IF NOT EXISTS escalation_briefs (
     emailed_to TEXT,
     emailed_at TEXT,
     created_by TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    brief_type TEXT NOT NULL DEFAULT 'INTERNAL_ADDENDUM'
 );
 
 -- Phase B: learning loop (B4). Every Victoria ruling and rule correction,
@@ -387,21 +366,12 @@ CREATE TABLE IF NOT EXISTS rule_corrections (
     source TEXT
 );
 
--- Sweep run history (2026-08-10): a durable, queryable record of every
--- sweep -- previously the only record of a source succeeding/failing was
--- Python's logger.exception, which is invisible in production (Render's
--- logs API doesn't surface application-level output, only deploy
--- lifecycle events -- confirmed the hard way while diagnosing why Public
--- Contracts Scotland and Sell2Wales showed zero notices with no visible
--- error anywhere). One sweep_runs row per sweep, one sweep_run_sources row
--- per source touched in that run, so "why did source X return nothing on
--- date Y" is answerable from the app itself, not by re-running code and
--- guessing.
+-- Durable history of every sweep and each source touched in that run.
 CREATE TABLE IF NOT EXISTS sweep_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at TEXT NOT NULL,
     finished_at TEXT,
-    triggered_by TEXT NOT NULL, -- a display_name, or 'scheduler' for the daily cron
+    triggered_by TEXT NOT NULL,
     total_pulled INTEGER NOT NULL DEFAULT 0,
     total_triaged INTEGER NOT NULL DEFAULT 0,
     total_expiring_leads INTEGER NOT NULL DEFAULT 0
@@ -411,7 +381,7 @@ CREATE TABLE IF NOT EXISTS sweep_run_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sweep_run_id INTEGER NOT NULL REFERENCES sweep_runs(id),
     source_name TEXT NOT NULL,
-    status TEXT NOT NULL, -- 'success' or 'failed'
+    status TEXT NOT NULL,
     pulled INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
     started_at TEXT NOT NULL,

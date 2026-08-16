@@ -53,10 +53,34 @@ python -m savvy_scout.cli triage                                         # re-tr
 python -m savvy_scout.cli export --output tracker.xlsx                   # multi-sheet tracker
 python -m savvy_scout.cli regression-test --baseline baseline.xlsx --output diff.xlsx
 python -m savvy_scout.cli backup --backup-dir backups                    # daily DB backup
+python -m savvy_scout.cli export-victoria-package --output-root "C:\path\to\01. Reports to Victoria"
 ```
 
 `regression-test` exits with status 1 if there is any disagreement, so it
 can be used as a pass/fail gate in a scheduled task or CI-style check.
+
+### Victoria reports package
+
+`export-victoria-package` uses the supplied house samples packaged under
+`savvy_scout/templates/artifacts/` and writes a complete local package:
+
+- one numbered folder per owner-approved Phase 2 opportunity, containing an
+   Internal Addendum `.docx`, Capture Brief `.docx`, and original-notice `.pdf`;
+- the supplied 19-column Trifork workbook with its formulas, validations and
+   Pass/Flag/Fail sheets preserved, keyed by the published notice reference;
+- weekly and monthly Word reports in their own folders.
+
+Only genuine owner decisions by Mark, Kanvesh or Hammad are eligible. The
+tracker and artifact package require a recorded Phase 2 assessment; system
+cleanup rows and Phase 1 rejections are excluded. Re-running the command
+updates existing reference rows and overwrites the same artifact filenames,
+so it does not duplicate opportunities.
+
+For automatic tracker refresh when the app runs on the same machine, set
+`TRIFORK_PIPELINE_OUTPUT_PATH` to the generated workbook's absolute path.
+A Render service cannot access a Windows `C:\Users\...` path. Cloud-hosted
+automatic sync will require a Microsoft Lists/SharePoint target and Graph
+`Sites.ReadWrite.All`; Graph mail continues to require `Mail.Send`.
 
 ### Windows Task Scheduler
 

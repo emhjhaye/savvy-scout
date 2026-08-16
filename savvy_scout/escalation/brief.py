@@ -27,7 +27,9 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from savvy_scout.escalation.context import MISSING, build_context
 
 GATE_ORDER = ["gate1", "gate2", "gate3", "gate4", "gate5", "filter3"]
 
@@ -44,6 +46,7 @@ ROW_ALT_BG = colors.HexColor("#F9FAFB")
 GRID_COLOR = colors.HexColor("#E5E7EB")
 MUTED_TEXT = colors.HexColor("#6B7280")
 PAGE_WIDTH = 16 * cm
+LOGO_PATH = Path(__file__).resolve().parent.parent / "static" / "design" / "logos" / "bidsavvy-logo.png"
 
 
 def _now() -> str:
@@ -149,14 +152,90 @@ def _footer_block(text: str, styles) -> list:
     ]
 
 
-def _build_pdf(output_path: str, story: list) -> str:
+def _build_pdf(output_path: str, story: list, footer_context: dict | None = None) -> str:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     doc = SimpleDocTemplate(
         output_path, pagesize=A4,
-        topMargin=1.5 * cm, bottomMargin=1.5 * cm, leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+        topMargin=1.5 * cm, bottomMargin=2 * cm, leftMargin=1.5 * cm, rightMargin=1.5 * cm,
     )
-    doc.build(story)
+
+    def draw_footer(canvas, _doc):
+        if not footer_context:
+            return
+        canvas.saveState()
+        canvas.setStrokeColor(GRID_COLOR)
+        canvas.line(1.5 * cm, 1.35 * cm, A4[0] - 1.5 * cm, 1.35 * cm)
+        canvas.setFillColor(MUTED_TEXT)
+        canvas.setFont("Helvetica", 7.5)
+        generated = str(footer_context["generated_at"])[:19].replace("T", " ")
+        left = "Smarter Bids. Real Results. | © 2026 Bid Savvy Solutions Ltd"
+        right = f"{footer_context['notice_reference']} | {generated} | Page {canvas.getPageNumber()}"
+        canvas.drawString(1.5 * cm, 0.9 * cm, left)
+        canvas.drawRightString(A4[0] - 1.5 * cm, 0.9 * cm, right)
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=draw_footer, onLaterPages=draw_footer)
     return output_path
+
+
+def _context_header(context: dict, label: str, styles) -> list:
+    urgency_text = context["urgency"].split(" ", 1)[-1]
+    urgency_colour = {
+        "URGENT": colors.HexColor("#DC2626"),
+        "Approaching": colors.HexColor("#D97706"),
+        "Open": colors.HexColor("#059669"),
+    }.get(urgency_text, MUTED_TEXT)
+    logo = Image(str(LOGO_PATH), width=3.3 * cm, height=1.15 * cm)
+    urgency = Table([[Paragraph(urgency_text, styles["BriefCellHeader"])]], colWidths=[3 * cm])
+    urgency.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), urgency_colour),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    band = Table([[logo, Paragraph(label.upper(), styles["BriefBanner"]), urgency]], colWidths=[4 * cm, 9 * cm, 3 * cm])
+    band.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F9FAFB")),
+        ("BOX", (0, 0), (-1, -1), 0.8, GRID_COLOR),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    return [
+        band,
+        Spacer(1, 10),
+        Paragraph(_esc(context["title"]), styles["BriefTitle"]),
+        Paragraph(
+            f"{_esc(context['buyer'])} &middot; {_esc(context['sector'])} &middot; "
+            f"Reference: {_esc(context['notice_reference'])}",
+            styles["BriefMeta"],
+        ),
+        Paragraph(
+            f"Generated: {_esc(context['generated_at'])}", styles["BriefMeta"]
+        ),
+        Spacer(1, 10),
+    ]
+
+
+def _provisional_banner(styles) -> Table:
+    return _callout_box(
+        "<b>PROVISIONAL — FOR VALIDATION</b><br/>AI-derived ratings and reasoning require human validation.",
+        styles,
+    )
+
+
+def _dict_text(value, preferred_keys) -> str:
+    if isinstance(value, dict):
+        parts = [str(value[key]) for key in preferred_keys if value.get(key)]
+        return " — ".join(parts) or MISSING
+    return str(value or MISSING)
+
+
+def _bullet_rows(values, preferred_keys) -> list[tuple]:
+    return [(f"• {_dict_text(value, preferred_keys)}",) for value in values] or [(MISSING,)]
 
 
 def _latest_gate_results(conn: sqlite3.Connection, notice_id: int) -> list[sqlite3.Row]:
@@ -181,138 +260,67 @@ def _latest_assessment(conn: sqlite3.Connection, notice_id: int) -> sqlite3.Row 
 
 
 def build_internal_addendum(conn: sqlite3.Connection, notice_id: int, output_dir: str = DEFAULT_BRIEFS_DIR) -> str:
-    """Generated the moment a notice is escalated (owner-marked or an
-    automatic Gate flag) -- BEFORE Victoria has made any decision. This is
-    what she reviews to decide go/no-go/park; the Capture Brief below is a
-    different, later document only generated after she says go."""
-    notice = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,)).fetchone()
-    if notice is None:
-        raise ValueError(f"No notice with id {notice_id}")
-
-    gate_rows = _latest_gate_results(conn, notice_id)
-    assessment = _latest_assessment(conn, notice_id)
-    flagged_gates = [g for g in gate_rows if g["outcome"] in ("FLAG", "MAYBE")]
-
+    context = build_context(conn, notice_id)
     styles = _pdf_styles()
-    story = _header_block(notice, "INTERNAL ADDENDUM &nbsp;|&nbsp; NOT FOR CLIENT DISTRIBUTION", styles)
-
+    story = _context_header(context, "Internal Addendum", styles)
     story.append(_callout_box(
-        "Internal use only. This document is for Victoria Milan's use only. It contains triage gate "
-        "outcomes, scouting rationale, open blockers, and direct asks for Trifork. It must not be "
-        "shared with Trifork or any external party.",
+        "<b>INTERNAL USE ONLY — NOT FOR CLIENT DISTRIBUTION.</b><br/>"
+        "Prepared for Victoria Milan to make a GO / NO-GO / Park decision.",
         styles,
+    ))
+    story.append(Paragraph("1. TRIAGE SUMMARY", styles["BriefSectionHeading"]))
+    surfaced = ", ".join(
+        f"{gate['gate_name']}: {gate['result']}" for gate in context["gate_outcomes"] if gate["result"] != "PASS"
+    ) or "all recorded gates passed"
+    story.append(Paragraph(
+        f"{_esc(context['title'])} is a {_esc(context['sector'])} opportunity from "
+        f"{_esc(context['buyer'])}. It surfaced for owner review because {_esc(surfaced)}.",
+        styles["BriefCell"],
     ))
     story.append(Paragraph(
-        "AUTO-GENERATED PROVISIONAL DRAFT FOR VALIDATION. Decision belongs to Victoria Milan, Bid Director.",
-        styles["BriefFooter"],
-    ))
-    story.append(Spacer(1, 14))
-
-    story.append(Paragraph("A. TRIAGE GATE SUMMARY", styles["BriefSectionHeading"]))
-    gate_summary_rows = (
-        [(f"Gate {GATE_ORDER.index(g['gate_number']) + 1}: {g['gate_name']}", f"{g['outcome']}. {g['reason']}")
-         for g in gate_rows]
-        or [("Not yet triaged", "")]
-    )
-    story.append(_section_table(["Gate", "Outcome"], gate_summary_rows, [4 * cm, 12 * cm], styles))
-
-    story.append(Paragraph("B. SCOUTING ASSESSMENT", styles["BriefSectionHeading"]))
-    # "Spotted by" / a separately-drafted client brief / an external tracker
-    # spreadsheet don't exist as concepts in this app -- sweeping is fully
-    # automated (nobody "spots" a notice) and there's no client-brief
-    # workflow or external tracker to report status from. Every row below is
-    # something Savvy Scout actually tracks; the notice link is deliberately
-    # its own row, never dropped -- the actual published notice on its
-    # source portal, not just the reference number.
-    scouting_rows = [
-        ("Pipeline reference", f"SS-{notice['id']}"),
-        ("First seen (swept)", (notice["first_seen_at"] or "")[:10] or "UNVERIFIED"),
-        ("Published", (notice["published_at"] or "")[:10] or "UNVERIFIED"),
-        ("Sector", notice["sector"] or "UNVERIFIED"),
-        ("Owner", notice["owner"] or "Unassigned"),
-        ("Deadline", (notice["deadline"] or "")[:10] or "UNVERIFIED"),
-        ("Notice reference", f"{notice['ref']}, {notice['source']}"),
-        ("Notice link", notice["notice_url"] or "Not published by source"),
-    ]
-    story.append(_section_table(["Field", "Detail"], scouting_rows, [4 * cm, 12 * cm], styles))
-
-    story.append(Paragraph("C. WHY THIS IS A HIGH FIT", styles["BriefSectionHeading"]))
-    capability_mapping = json.loads(assessment["capability_mapping"]) if assessment and assessment["capability_mapping"] else None
-    if capability_mapping:
-        fit_rows = [(row["problem"], row["capability_mapping"]) for row in capability_mapping]
-        story.append(_section_table(["LCCC problem", "Trifork capability mapping"], fit_rows, [6 * cm, 10 * cm], styles))
-    elif assessment:
-        story.append(_section_table(
-            ["Dimension", "Assessment"],
-            [
-                ("Capability fit", f"{assessment['capability_fit_rating']} -- "
-                 f"{assessment['capability_fit_reasoning']} (PROVISIONAL, FOR VALIDATION)"),
-                ("Right to win", f"{assessment['right_to_win_rating']} -- "
-                 f"{assessment['right_to_win_reasoning']} (PROVISIONAL, FOR VALIDATION)"),
-            ],
-            [4 * cm, 12 * cm], styles,
-        ))
-    else:
-        story.append(Paragraph("Phase 2 scope read has not run yet for this notice.", styles["BriefCell"]))
-
-    # UK-newness (reference-building, partnering, European proof points)
-    # lives here, never in blockers below (Victoria Milan's ruling of 11
-    # August 2026, corrected into the prompt 2026-08-12). A bid writer
-    # genuinely needs this; it just isn't a reason for doubt.
-    story.append(Paragraph("D. POSITIONING POINTS", styles["BriefSectionHeading"]))
-    positioning_points = (
-        json.loads(assessment["positioning_points"]) if assessment and assessment["positioning_points"] else None
-    )
-    if positioning_points:
-        positioning_rows = [(row["point"], row["how_to_address"]) for row in positioning_points]
-        story.append(_section_table(["Point", "How to address"], positioning_rows, [6 * cm, 10 * cm], styles))
-    else:
-        story.append(Paragraph("None recorded.", styles["BriefCell"]))
-
-    story.append(Paragraph("E. OPEN BLOCKERS AND RISKS", styles["BriefSectionHeading"]))
-    blockers = json.loads(assessment["blockers"]) if assessment and assessment["blockers"] else None
-    if blockers:
-        risk_rows = [(row["blocker"], row["assessment"]) for row in blockers]
-    else:
-        risk_rows = [(g["gate_name"], g["reason"]) for g in flagged_gates] or [("No gate flags recorded", "")]
-    story.append(_section_table(["Blocker or risk", "Assessment"], risk_rows, [4 * cm, 12 * cm], styles))
-
-    story.append(Paragraph("F. DIRECT ASKS FOR TRIFORK VIA VICTORIA", styles["BriefSectionHeading"]))
-    asks = json.loads(assessment["asks"]) if assessment and assessment["asks"] else None
-    if asks:
-        ask_rows = [(row["ask"], row["why_it_matters"]) for row in asks]
-        story.append(_section_table(["Ask", "Why it matters"], ask_rows, [6 * cm, 10 * cm], styles))
-    else:
-        open_questions = json.loads(assessment["open_questions"]) if assessment else []
-        question_rows = [(q,) for q in open_questions] or [("None recorded.",)]
-        story.append(_section_table(["Open question"], question_rows, [16 * cm], styles))
-
-    story.append(Paragraph("G. DECISION REQUESTED FROM VICTORIA", styles["BriefSectionHeading"]))
-    recommendation = json.loads(assessment["recommendation"]) if assessment and assessment["recommendation"] else None
-    if recommendation:
-        actions = "".join(f"({i}) {_esc(a)} " for i, a in enumerate(recommendation["immediate_actions"], start=1))
-        decision_text = (
-            f"Decision required: does Victoria want to proceed with &ldquo;{_esc(notice['title'])}&rdquo; "
-            f"(ref {_esc(notice['ref'])})? Recommendation: {_esc(recommendation['decision'].replace('_', ' ').title())} "
-            f"-- {_esc(recommendation['rationale'])} (PROVISIONAL, FOR VALIDATION)."
-        )
-        if actions.strip():
-            decision_text += f" If yes, immediate actions: {actions.strip()}"
-    else:
-        decision_text = (
-            f"Decision required: go, no-go or park for &ldquo;{_esc(notice['title'])}&rdquo; "
-            f"(ref {_esc(notice['ref'])})."
-        )
-    story.append(_callout_box(decision_text, styles))
-
-    story.extend(_footer_block(
-        "Auto-generated by Savvy Scout &middot; Internal use only &middot; Not for client distribution",
-        styles,
+        f"Source notice: {_esc(context['notice_url'])}", styles["BriefCell"]
     ))
 
-    safe_ref = notice["ref"].replace("/", "-")
+    story.append(Paragraph("2. CAPABILITY MAPPING", styles["BriefSectionHeading"]))
+    story.append(_section_table(
+        ["Gate", "Result", "Reason"],
+        [(gate["gate_name"], gate["result"], gate["reason"]) for gate in context["gate_outcomes"]] or [(MISSING, MISSING, MISSING)],
+        [4 * cm, 2.5 * cm, 9.5 * cm], styles,
+    ))
+    story.append(Spacer(1, 8))
+    story.append(_provisional_banner(styles))
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    story.append(_section_table(
+        ["AI dimension", "Rating", "Reasoning"],
+        [
+            ("Capability fit", context["ai_read"]["capability_fit"], reasoning.get("capability_fit", MISSING)),
+            ("Competitor position", context["ai_read"]["competitor_position"], reasoning.get("competitor_position", MISSING)),
+            ("Right to win", context["ai_read"]["right_to_win"], reasoning.get("right_to_win", MISSING)),
+            ("Overall", context["ai_read"]["overall"], reasoning.get("overall", MISSING)),
+        ],
+        [4 * cm, 2.5 * cm, 9.5 * cm], styles,
+    ))
+
+    story.append(Paragraph("3. BLOCKERS & RISKS", styles["BriefSectionHeading"]))
+    story.append(_section_table(["Material blockers and risks"], _bullet_rows(
+        context["blockers_risks"], ("blocker", "assessment")
+    ), [16 * cm], styles))
+
+    story.append(Paragraph("4. DIRECT ASKS", styles["BriefSectionHeading"]))
+    asks = context["direct_asks"] or context["ai_read"].get("open_questions", [])
+    story.append(_section_table(["Decision or answer required from Victoria"], _bullet_rows(
+        asks, ("ask", "why_it_matters")
+    ), [16 * cm], styles))
+
+    story.append(Paragraph("5. RECOMMENDATION", styles["BriefSectionHeading"]))
+    story.append(_callout_box(
+        f"Owner recommendation: <b>{_esc(context['recommended_next_action'])}</b><br/>"
+        f"Recommended by: {_esc(context['owner_name'])}", styles,
+    ))
+
+    safe_ref = context["notice_reference"].replace("/", "-")
     output_path = str(Path(output_dir) / f"{safe_ref}_internal_addendum.pdf")
-    return _build_pdf(output_path, story)
+    return _build_pdf(output_path, story, context)
 
 
 def build_original_notice_pdf(
@@ -351,115 +359,51 @@ def build_original_notice_pdf(
 
 
 def build_capture_brief(conn: sqlite3.Connection, notice_id: int, output_dir: str = DEFAULT_BRIEFS_DIR) -> str:
-    """Generated after owner Phase 2 approval for Victoria's review. Same
-    visual language as the Internal Addendum, client-facing content."""
-    notice = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,)).fetchone()
-    if notice is None:
-        raise ValueError(f"No notice with id {notice_id}")
-
-    assessment = _latest_assessment(conn, notice_id)
+    context = build_context(conn, notice_id)
     styles = _pdf_styles()
-    story = _header_block(notice, "CAPTURE BRIEF &nbsp;|&nbsp; PREPARED UNDER VICTORIA MILAN, BID DIRECTOR", styles)
+    story = _context_header(context, "Capture Brief", styles)
+    sections = [
+        ("1. OPPORTUNITY SUMMARY", context["notice_text"]),
+        ("2. BUYER", context["buyer"]),
+        ("3. VALUE", f"{context['value_estimate']} {context['currency']}"),
+        ("4. ROUTE TO MARKET", f"{context['route_to_market']} | Framework: {context['framework_status']}"),
+    ]
+    for heading, text in sections:
+        story.append(Paragraph(heading, styles["BriefSectionHeading"]))
+        story.append(Paragraph(_esc(text), styles["BriefCell"]))
 
+    story.append(Paragraph("5. GATE OUTCOMES", styles["BriefSectionHeading"]))
     story.append(_section_table(
-        ["Field", "Detail"],
-        [
-            ("Reference", notice["ref"]),
-            ("Buyer", notice["buyer"] or "UNVERIFIED"),
-            ("Value", (notice["indicative_value"] or "UNVERIFIED")
-             + (f" (inc. VAT: {notice['value_amount_gross']})" if notice["value_amount_gross"] else "")),
-            ("Above threshold", ("Yes" if notice["above_threshold"] else "No")
-             if notice["above_threshold"] is not None else "UNVERIFIED"),
-            ("Category", notice["main_procurement_category"] or ""),
-            ("Notice link", notice["notice_url"] or "Not published by source"),
-        ],
-        [4 * cm, 12 * cm], styles,
+        ["Gate", "Result", "Reason"],
+        [(gate["gate_name"], gate["result"], gate["reason"]) for gate in context["gate_outcomes"]] or [(MISSING, MISSING, MISSING)],
+        [4 * cm, 2.5 * cm, 9.5 * cm], styles,
     ))
 
-    story.append(Paragraph("PROCUREMENT MECHANICS", styles["BriefSectionHeading"]))
+    story.append(Paragraph("6. PROVISIONAL RATINGS WITH REASONING", styles["BriefSectionHeading"]))
+    story.append(_provisional_banner(styles))
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
     story.append(_section_table(
-        ["Field", "Detail"],
+        ["Dimension", "Rating", "Reasoning"],
         [
-            ("Source", notice["source"]),
-            ("UK stage", notice["uk_stage"]),
-            ("Procedure", notice["procurement_method"] or "UNVERIFIED"),
-            ("Procedure details", notice["procurement_method_details"] or ""),
-            ("Procedure features", notice["procedure_features"] or ""),
-        ],
-        [4 * cm, 12 * cm], styles,
+            ("Capability fit", context["ai_read"]["capability_fit"], reasoning.get("capability_fit", MISSING)),
+            ("Competitor position", context["ai_read"]["competitor_position"], reasoning.get("competitor_position", MISSING)),
+            ("Right to win", context["ai_read"]["right_to_win"], reasoning.get("right_to_win", MISSING)),
+            ("Overall", context["ai_read"]["overall"], reasoning.get("overall", MISSING)),
+        ], [4 * cm, 2.5 * cm, 9.5 * cm], styles,
     ))
 
-    story.append(Paragraph("PROCUREMENT TIMETABLE", styles["BriefSectionHeading"]))
-    contract_range = (
-        f"{notice['contract_start_date'] or 'UNVERIFIED'} to {notice['contract_end_date'] or 'UNVERIFIED'}"
-        + (f" (max extent {notice['contract_max_extent_date']})" if notice["contract_max_extent_date"] else "")
-    )
-    story.append(_section_table(
-        ["Field", "Detail"],
-        [
-            ("Enquiry period end", notice["enquiry_period_end"] or ""),
-            ("Deadline", notice["deadline"] or "UNVERIFIED"),
-            ("Award decision (est.)", notice["award_period_end"] or ""),
-            ("Contract", contract_range),
-            ("Renewal", notice["renewal_description"] or ""),
-        ],
-        [4 * cm, 12 * cm], styles,
-    ))
+    story.append(Paragraph("7. COMPETITOR PICTURE", styles["BriefSectionHeading"]))
+    story.append(Paragraph(_esc(reasoning.get("competitor_position", MISSING)), styles["BriefCell"]))
+    story.append(Paragraph("8. RISKS", styles["BriefSectionHeading"]))
+    story.append(_section_table(["Risk"], _bullet_rows(context["blockers_risks"], ("blocker", "assessment")), [16 * cm], styles))
+    story.append(Paragraph("9. OPEN QUESTIONS", styles["BriefSectionHeading"]))
+    story.append(_section_table(["Question"], _bullet_rows(context["ai_read"].get("open_questions", []), ()), [16 * cm], styles))
+    story.append(Paragraph("10. RECOMMENDED NEXT ACTION", styles["BriefSectionHeading"]))
+    story.append(_callout_box(_esc(context["recommended_next_action"]), styles))
 
-    story.append(Paragraph("AWARD CRITERIA", styles["BriefSectionHeading"]))
-    story.append(Paragraph(_esc(notice["award_criteria_summary"]) or "Not stated.", styles["BriefCell"]))
-
-    story.append(Paragraph("SUBMISSION DETAILS", styles["BriefSectionHeading"]))
-    story.append(_section_table(
-        ["Field", "Detail"],
-        [
-            ("Method", notice["submission_method_details"] or "Not stated -- see original notice."),
-            ("Electronic submission", notice["electronic_submission_policy"] or ""),
-            ("Languages", notice["submission_languages"] or ""),
-        ],
-        [4 * cm, 12 * cm], styles,
-    ))
-
-    story.append(Paragraph("SCOPE OF REQUIREMENT", styles["BriefSectionHeading"]))
-    story.append(Paragraph(_esc((notice["text_blob"] or "UNVERIFIED")[:1200]), styles["BriefCell"]))
-
-    story.append(Paragraph("CONTACTS AND BUYER DETAILS", styles["BriefSectionHeading"]))
-    story.append(_section_table(
-        ["Field", "Detail"],
-        [
-            ("Contracting authority", notice["buyer_address"] or "UNVERIFIED"),
-            ("PPON", notice["buyer_ppon"] or ""),
-            ("Contact", notice["buyer_contact_email"] or ""),
-            ("Website", notice["buyer_website"] or ""),
-            ("Organisation type", notice["buyer_org_type"] or ""),
-            ("Incumbent supplier", notice["supplier_name"] or ""),
-            ("Conflicts assessment", notice["conflicts_assessment"] or ""),
-        ],
-        [4 * cm, 12 * cm], styles,
-    ))
-
-    story.append(Paragraph("CAPABILITY AND FIT ASSESSMENT", styles["BriefSectionHeading"]))
-    fit_text = (
-        f"{_esc(assessment['overall_rating'])} -- {_esc(assessment['overall_reasoning'])}"
-        if assessment else "PROVISIONAL, FOR VALIDATION -- no assessment available."
-    )
-    story.append(Paragraph(fit_text, styles["BriefCell"]))
-
-    story.append(Paragraph("DECISION FRAMEWORK", styles["BriefSectionHeading"]))
-    story.append(_callout_box(
-        "Proceed based on Victoria's GO decision and owner readiness. Confirm route to market, "
-        "timeline and clarifications before submission.",
-        styles,
-    ))
-
-    story.extend(_footer_block(
-        "Auto-generated by Savvy Scout &middot; Prepared after owner Phase 2 approval &middot; Draft for Victoria's review",
-        styles,
-    ))
-
-    safe_ref = notice["ref"].replace("/", "-")
+    safe_ref = context["notice_reference"].replace("/", "-")
     output_path = str(Path(output_dir) / f"{safe_ref}_capture_brief.pdf")
-    return _build_pdf(output_path, story)
+    return _build_pdf(output_path, story, context)
 
 
 def build_brief(conn: sqlite3.Connection, notice_id: int, output_dir: str = DEFAULT_BRIEFS_DIR) -> str:
@@ -476,6 +420,19 @@ def record_brief(
     brief_type: str = "INTERNAL_ADDENDUM",
 ) -> int:
     now = _now()
+    existing = conn.execute(
+        "SELECT id FROM escalation_briefs WHERE notice_id = ? AND brief_type = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (notice_id, brief_type),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE escalation_briefs SET trigger_reason = ?, docx_path = ?, created_by = ?, "
+            "created_at = ? WHERE id = ?",
+            (trigger_reason, docx_path, created_by, now, existing["id"]),
+        )
+        conn.commit()
+        return existing["id"]
     cursor = conn.execute(
         "INSERT INTO escalation_briefs (notice_id, trigger_reason, docx_path, created_by, created_at, brief_type) "
         "VALUES (?, ?, ?, ?, ?, ?)",

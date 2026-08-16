@@ -1,26 +1,58 @@
 from pypdf import PdfReader
+from docx import Document
 
-from savvy_scout.escalation.brief import build_brief, build_original_notice_pdf, record_brief
+from savvy_scout.escalation.brief import (
+    build_brief,
+    build_capture_brief,
+    build_original_notice_pdf,
+    record_brief,
+)
 from savvy_scout.models.notice import Notice
 from savvy_scout.sources.ocds_parser import ParsedNotice
 from savvy_scout.sweep.dedupe import upsert_notice
 from savvy_scout.triage.gates import triage_notice
 from savvy_scout.triage.scope_read import save_scope_read
+from savvy_scout.escalation.word_documents import (
+    build_capture_brief_docx,
+    build_internal_addendum_docx,
+)
 
 SECTION_TITLES = [
-    "TRIAGE GATE SUMMARY",
-    "SCOUTING ASSESSMENT",
-    "WHY THIS IS A HIGH FIT",
-    "POSITIONING POINTS",
-    "OPEN BLOCKERS AND RISKS",
-    "DIRECT ASKS FOR TRIFORK VIA VICTORIA",
-    "DECISION REQUESTED FROM VICTORIA",
+    "TRIAGE SUMMARY",
+    "CAPABILITY MAPPING",
+    "BLOCKERS & RISKS",
+    "DIRECT ASKS",
+    "RECOMMENDATION",
+]
+
+CAPTURE_SECTION_TITLES = [
+    "1. OPPORTUNITY SUMMARY",
+    "2. BUYER",
+    "3. VALUE",
+    "4. ROUTE TO MARKET",
+    "5. GATE OUTCOMES",
+    "6. PROVISIONAL RATINGS WITH REASONING",
+    "7. COMPETITOR PICTURE",
+    "8. RISKS",
+    "9. OPEN QUESTIONS",
+    "10. RECOMMENDED NEXT ACTION",
 ]
 
 
 def _pdf_text(path: str) -> str:
     reader = PdfReader(path)
     return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _docx_text(path: str) -> str:
+    document = Document(path)
+    parts = [paragraph.text for paragraph in document.paragraphs]
+    for table in document.tables:
+        for row in table.rows:
+            parts.extend(cell.text for cell in row.cells)
+    for section in document.sections:
+        parts.extend(paragraph.text for paragraph in section.footer.paragraphs)
+    return "\n".join(parts)
 
 
 def _make_notice(conn):
@@ -57,7 +89,6 @@ def test_build_brief_has_all_sections_and_warning(conn, tmp_path):
 
     assert "INTERNAL ADDENDUM" in full_text
     assert "NOT FOR CLIENT DISTRIBUTION" in full_text
-    assert "AUTO-GENERATED PROVISIONAL DRAFT FOR VALIDATION" in full_text
     assert "Ambiguous Sector Notice For Brief Test" in full_text
     for title in SECTION_TITLES:
         assert title in full_text, f"missing section: {title}"
@@ -65,8 +96,7 @@ def test_build_brief_has_all_sections_and_warning(conn, tmp_path):
     # The notice link must never be dropped from the Scouting Assessment section.
     assert "https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1" in full_text
 
-    # Gate 1's FLAG reason should show up in both the gate summary and risks sections.
-    assert "escalate to Victoria" in full_text
+    assert "Buyer in scope" in full_text
 
 
 def test_build_brief_includes_provisional_label_when_assessment_exists(conn, tmp_path):
@@ -85,7 +115,7 @@ def test_build_brief_includes_provisional_label_when_assessment_exists(conn, tmp
     path = build_brief(conn, notice_id, output_dir=str(tmp_path / "briefs"))
     full_text = _pdf_text(path)
 
-    assert "PROVISIONAL, FOR VALIDATION" in full_text
+    assert "PROVISIONAL — FOR VALIDATION" in full_text
     assert "Is this really out of sector?" in full_text
 
 
@@ -100,15 +130,7 @@ def test_build_original_notice_pdf_preserves_source_and_full_text(conn, tmp_path
     assert "real-time payments platform integration with smart grid billing systems" in full_text
 
 
-def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):
-    """Sections C/D/E/F/G use the richer AI-generated fields (capability
-    mapping, positioning points, structured blockers, asks with reasons, an
-    explicit recommendation) when a Phase 2 assessment provides them,
-    matching the reference document's exact table shapes -- 2026-08-09.
-    positioning_points added 2026-08-12 (Victoria Milan's ruling of 11
-    August 2026): UK delivery capacity/staff scale is a positioning point,
-    never a blocker -- this fixture keeps that distinction, unlike the
-    pre-fix data it replaces."""
+def test_build_brief_renders_risks_asks_and_recommendation(conn, tmp_path):
     notice_id = _make_notice(conn)
     save_scope_read(
         conn,
@@ -144,19 +166,57 @@ def test_build_brief_renders_rich_addendum_fields_when_present(conn, tmp_path):
     path = build_brief(conn, notice_id, output_dir=str(tmp_path / "briefs"))
     full_text = _pdf_text(path)
 
-    assert "LCCC problem" in full_text
-    assert "Trifork capability mapping" in full_text
-    assert "&Money financial platform" in full_text
-    assert "No UK delivery reference yet" in full_text
-    assert "How to address" in full_text
     assert "Framework access" in full_text
     assert "Named call-off Trifork is not on." in full_text
     assert "Confirm UK delivery capacity." in full_text
-    assert "Why it matters" in full_text
-    assert "Register interest via the buyer" in full_text
-    assert "Proceed" in full_text
-    # Asks take priority over the plain open_questions fallback.
+    assert "PROCEED" in full_text
     assert "Should not appear" not in full_text
+
+
+def test_capture_brief_has_exact_ten_sections_in_order(conn, tmp_path):
+    notice_id = _make_notice(conn)
+    path = build_capture_brief(conn, notice_id, output_dir=str(tmp_path / "briefs"))
+    full_text = _pdf_text(path)
+
+    positions = [full_text.index(title) for title in CAPTURE_SECTION_TITLES]
+    assert positions == sorted(positions)
+    assert "PROVISIONAL — FOR VALIDATION" in full_text
+
+
+def test_word_internal_addendum_has_required_sections(conn, tmp_path):
+    notice_id = _make_notice(conn)
+    path = build_internal_addendum_docx(conn, notice_id, str(tmp_path / "briefs"))
+    full_text = _docx_text(path)
+
+    assert path.endswith("_internal_addendum.docx")
+    positions = [full_text.index(title) for title in (
+        "A. TRIAGE GATE SUMMARY", "B. SCOUTING ASSESSMENT", "C. WHY THIS IS A HIGH FIT",
+        "D. OPEN BLOCKERS AND RISKS", "E. DIRECT ASKS FOR TRIFORK VIA VICTORIA",
+        "F. DECISION REQUESTED FROM VICTORIA",
+    )]
+    assert positions == sorted(positions)
+    assert "INTERNAL USE ONLY" in full_text
+    assert "PROVISIONAL — FOR VALIDATION" in full_text
+    assert "Smarter Bids. Real Results." in full_text
+
+
+def test_word_capture_brief_has_exact_ten_sections(conn, tmp_path):
+    notice_id = _make_notice(conn)
+    path = build_capture_brief_docx(conn, notice_id, str(tmp_path / "briefs"))
+    full_text = _docx_text(path)
+
+    assert path.endswith("_capture_brief.docx")
+    headings = (
+        "1. EXECUTIVE SUMMARY", "2. KEY TERMS", "3. PROCUREMENT MECHANICS",
+        "4. PROCUREMENT TIMETABLE", "5. SCOPE OF REQUIREMENT",
+        "6. CAPABILITY AND FIT ASSESSMENT", "7. DECISION FRAMEWORK",
+        "8. IMMEDIATE ACTIONS REQUIRED", "9. SOLO OR PARTNER RECOMMENDATION",
+        "10. SUMMARY DECISION PACK",
+    )
+    positions = [full_text.index(title) for title in headings]
+    assert positions == sorted(positions)
+    assert "PROVISIONAL — FOR VALIDATION" in full_text
+    assert "Smarter Bids. Real Results." in full_text
 
 
 def test_record_brief_inserts_row(conn, tmp_path):

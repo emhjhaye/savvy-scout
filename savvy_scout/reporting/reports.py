@@ -28,6 +28,8 @@ from docx.shared import Cm, Pt, RGBColor
 
 from savvy_scout.dashboard.scope_filter import in_scope_filter_sql
 
+REPORT_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "artifacts"
+
 RED = RGBColor(0xAF, 0x1F, 0x23)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 DARK = RGBColor(0x11, 0x11, 0x11)
@@ -101,6 +103,15 @@ IN_PROGRESS_STATUSES = {
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _document_from_template(filename: str) -> Document:
+    document = Document(REPORT_TEMPLATE_DIR / filename)
+    body = document._element.body
+    for child in list(body):
+        if child.tag != qn("w:sectPr"):
+            body.remove(child)
+    return document
 
 
 def most_recent_monday(reference: date | None = None) -> date:
@@ -259,7 +270,7 @@ def generate_weekly_report(
         scope_params + owner_params + [week_start.isoformat(), week_end.isoformat()],
     ).fetchall()
 
-    doc = Document()
+    doc = _document_from_template("weekly_report_template.docx")
     _add_masthead(
         doc,
         "Weekly New Opportunities Summary",
@@ -340,7 +351,7 @@ def generate_monthly_report(
         [month_start.isoformat(), month_end.isoformat()] + scope_params + owner_params + approval_params,
     ).fetchall()
 
-    doc = Document()
+    doc = _document_from_template("monthly_report_template.docx")
     _add_masthead(
         doc,
         "Monthly Opportunity Pipeline Report",

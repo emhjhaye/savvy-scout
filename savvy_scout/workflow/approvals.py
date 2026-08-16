@@ -21,10 +21,12 @@ from datetime import datetime, timezone
 
 from savvy_scout.escalation.brief import (
     DEFAULT_BRIEFS_DIR,
-    build_capture_brief,
-    build_internal_addendum,
     build_original_notice_pdf,
     record_brief,
+)
+from savvy_scout.escalation.word_documents import (
+    build_capture_brief_docx,
+    build_internal_addendum_docx,
 )
 from savvy_scout.export.trifork_pipeline import update_configured_trifork_pipeline
 from savvy_scout.logging_util import log_audit, log_status_change
@@ -131,9 +133,9 @@ def escalate_to_victoria(
     notice_row = _get_notice(conn, notice_id)
     _transition(conn, notice_row, Status.ESCALATED_TO_VICTORIA, actor, trigger_reason)
 
-    addendum_path = build_internal_addendum(conn, notice_id, output_dir=briefs_dir)
+    addendum_path = build_internal_addendum_docx(conn, notice_id, output_dir=briefs_dir)
     record_brief(conn, notice_id, trigger_reason, addendum_path, actor, brief_type="INTERNAL_ADDENDUM")
-    capture_path = build_capture_brief(conn, notice_id, output_dir=briefs_dir)
+    capture_path = build_capture_brief_docx(conn, notice_id, output_dir=briefs_dir)
     record_brief(conn, notice_id, trigger_reason, capture_path, actor, brief_type="CAPTURE_BRIEF")
     notice_path = build_original_notice_pdf(conn, notice_id, output_dir=briefs_dir)
     record_brief(conn, notice_id, trigger_reason, notice_path, actor, brief_type="ORIGINAL_NOTICE")
@@ -344,7 +346,7 @@ def victoria_decision(
             (notice_id,),
         ).fetchone()
         if capture_brief is None:
-            capture_path = build_capture_brief(conn, notice_id)
+            capture_path = build_capture_brief_docx(conn, notice_id, DEFAULT_BRIEFS_DIR)
             record_brief(
                 conn,
                 notice_id,

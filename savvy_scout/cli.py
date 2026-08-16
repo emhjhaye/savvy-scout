@@ -22,6 +22,7 @@ from savvy_scout.db.seed_config import seed_all
 from savvy_scout.export.excel_tracker import export_tracker
 from savvy_scout.export.trifork_pipeline import update_trifork_pipeline
 from savvy_scout.regression.baseline_compare import run_regression_test
+from savvy_scout.reporting.victoria_export import export_victoria_package
 from savvy_scout.sweep.runner import run_sweep, triage_pending
 from savvy_scout.workflow.approvals import (
     correct_pre_routing_fix_backlog,
@@ -69,10 +70,21 @@ def cmd_export(args: argparse.Namespace) -> None:
 def cmd_sync_trifork_tracker(args: argparse.Namespace) -> None:
     settings = load_settings()
     conn = get_connection(settings.db_path)
-    result = update_trifork_pipeline(conn, args.template, args.output)
+    result = update_trifork_pipeline(conn, args.output)
     print(
         f"Trifork tracker updated at {result['output_path']}: "
-        f"{result['Pass']} Pass, {result['Flag']} Flag, {result['Fail']} Fail."
+        f"{result['inserted']} inserted, {result['updated']} updated, {result['skipped']} skipped."
+    )
+
+
+def cmd_export_victoria_package(args: argparse.Namespace) -> None:
+    settings = load_settings()
+    conn = get_connection(settings.db_path)
+    result = export_victoria_package(conn, args.output_root)
+    print(
+        f"Victoria package exported to {args.output_root}: "
+        f"{result['opportunities_with_artifacts']} opportunities, "
+        f"{result['artifacts']} PDFs, {result['tracker']['total']} tracker rows."
     )
 
 
@@ -198,9 +210,15 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-trifork-tracker",
         help="Update the formatted Trifork pipeline workbook from genuine owner Phase 2 decisions",
     )
-    trifork_parser.add_argument("--template", required=True)
     trifork_parser.add_argument("--output", required=True)
     trifork_parser.set_defaults(func=cmd_sync_trifork_tracker)
+
+    victoria_parser = subparsers.add_parser(
+        "export-victoria-package",
+        help="Generate the complete local Victoria reports package",
+    )
+    victoria_parser.add_argument("--output-root", required=True)
+    victoria_parser.set_defaults(func=cmd_export_victoria_package)
 
     regression_parser = subparsers.add_parser(
         "regression-test", help="Compare machine outcomes against a baseline tracker Excel file"

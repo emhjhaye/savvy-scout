@@ -1,227 +1,166 @@
 import json
 import os
-import re
 import sqlite3
 from copy import copy
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from openpyxl import load_workbook
 
+from savvy_scout.escalation.context import MISSING, OWNER_NAMES, build_context
+
+TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "artifacts" / "pipeline_tracker_template.xlsx"
 TRACKER_SHEETS = ("Pass", "Flag", "Fail")
-OWNER_NAMES = ("Mark", "Kanvesh", "Hammad")
+CLEAR_SHEETS = TRACKER_SHEETS + ("Pass to Kanvesh", "Pass to NHS")
 HEADERS = (
-    "REF #", "DATE SPOTTED", "OPPORTUNITY TITLE", "BUYER", "BUYER TYPE",
-    "SECTOR", "SOURCE", "NOTICE TYPE", "INDICATIVE VALUE", "CPV CODES",
+    "REF #", "DATE SPOTTED", "OPPORTUNITY TITLE", "BUYER", "BUYER TYPE", "SECTOR",
+    "SOURCE", "NOTICE TYPE", "INDICATIVE VALUE", "CPV CODES",
     "SUBMISSION/ENGAGEMENT DEADLINE", "TRIAGE STATUS", "CAPABILITY FIT",
-    "FRAMEWORK STATUS", "FILTER FLAGS (1/2/3)", "REASON / NOTES",
-    "NEXT ACTION", "NEXT ACTION DATE", "OPEN FLAGS FOR VICTORIA",
+    "FRAMEWORK STATUS", "FILTER FLAGS (1/2/3)", "REASON / NOTES", "NEXT ACTION",
+    "NEXT ACTION DATE", "OPEN FLAGS FOR VICTORIA",
 )
 
 
-def _normalise(value) -> str:
-    return " ".join(str(value or "").casefold().split())
-
-
-def _decision_rows(conn: sqlite3.Connection) -> list[dict]:
+def _owner_reviewed_notice_ids(conn: sqlite3.Connection) -> list[int]:
     placeholders = ",".join("?" for _ in OWNER_NAMES)
-    decisions = conn.execute(
-        f"""
-        SELECT sh.notice_id, sh.to_status, sh.changed_by, sh.changed_at, sh.reason
-        FROM status_history sh
-        WHERE sh.from_status = 'AWAITING_PHASE2_APPROVAL'
-          AND sh.to_status IN ('ESCALATED_TO_VICTORIA', 'REJECTED')
-          AND sh.changed_by IN ({placeholders})
-        ORDER BY sh.changed_at, sh.id
-        """,
+    rows = conn.execute(
+        f"SELECT notice_id, MAX(id) latest_id FROM status_history "
+        f"WHERE from_status = 'AWAITING_PHASE2_APPROVAL' "
+        f"AND to_status IN ('ESCALATED_TO_VICTORIA', 'REJECTED') "
+        f"AND changed_by IN ({placeholders}) "
+        f"AND EXISTS (SELECT 1 FROM phase2_assessments p WHERE p.notice_id = status_history.notice_id) "
+        f"GROUP BY notice_id ORDER BY latest_id",
         OWNER_NAMES,
     ).fetchall()
-
-    latest_by_notice = {row["notice_id"]: row for row in decisions}
-    rows = []
-    for notice_id, decision in latest_by_notice.items():
-        notice = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,)).fetchone()
-        if notice is None:
-            continue
-        assessment = conn.execute(
-            "SELECT * FROM phase2_assessments WHERE notice_id = ? ORDER BY id DESC LIMIT 1",
-            (notice_id,),
-        ).fetchone()
-        gate3 = conn.execute(
-            "SELECT outcome, reason FROM gate_results WHERE notice_id = ? AND gate_number = 'gate3' "
-            "ORDER BY id DESC LIMIT 1",
-            (notice_id,),
-        ).fetchone()
-        row = dict(notice)
-        row["decision"] = dict(decision)
-        row["assessment"] = dict(assessment) if assessment else None
-        row["gate3"] = dict(gate3) if gate3 else None
-        rows.append(row)
-    return rows
+    return [row["notice_id"] for row in rows]
 
 
-def _target_sheet(row: dict) -> str:
-    if row["decision"]["to_status"] == "REJECTED":
+def _decision_target(conn, notice_id):
+    placeholders = ",".join("?" for _ in OWNER_NAMES)
+    return conn.execute(
+        f"SELECT to_status, reason FROM status_history WHERE notice_id = ? "
+        f"AND from_status = 'AWAITING_PHASE2_APPROVAL' "
+        f"AND to_status IN ('ESCALATED_TO_VICTORIA', 'REJECTED') "
+        f"AND changed_by IN ({placeholders}) ORDER BY id DESC LIMIT 1",
+        (notice_id, *OWNER_NAMES),
+    ).fetchone()
+
+
+def _target_sheet(context, decision):
+    if decision["to_status"] == "REJECTED":
         return "Fail"
-    rating = (row["assessment"] or {}).get("overall_rating")
-    return "Pass" if rating == "PURSUE" else "Flag"
+    return "Pass" if context["ai_read"]["overall"] == "PURSUE" else "Flag"
 
 
-def _json_list(value) -> list:
-    if not value:
-        return []
-    try:
-        result = json.loads(value)
-        return result if isinstance(result, list) else []
-    except (TypeError, ValueError):
-        return []
-
-
-def _cpv_text(row: dict) -> str:
-    codes = [row.get("cpv_primary")] + _json_list(row.get("cpv_additional"))
-    return ";".join(dict.fromkeys(str(code) for code in codes if code)) or "UNVERIFIED"
-
-
-def _capability_fit(row: dict) -> str:
-    assessment = row["assessment"]
-    if not assessment:
-        return "UNVERIFIED: no Phase 2 assessment recorded"
-    rating = assessment.get("capability_fit_rating") or "UNVERIFIED"
-    reasoning = assessment.get("capability_fit_reasoning") or ""
-    return f"{rating}: {reasoning}".rstrip(": ")
-
-
-def _open_questions(row: dict) -> str:
-    assessment = row["assessment"]
-    if not assessment:
-        return ""
-    return " | ".join(str(item) for item in _json_list(assessment.get("open_questions")))
-
-
-def _row_values(row: dict, tracker_ref: str) -> list:
-    decision = row["decision"]
-    assessment = row["assessment"] or {}
-    target = _target_sheet(row)
-    approved = target != "Fail"
-    framework = row["gate3"] or {}
+def _row_values(context, decision):
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    questions = context["ai_read"].get("open_questions", [])
     return [
-        tracker_ref,
-        (row.get("first_seen_at") or "")[:10],
-        row.get("title"),
-        row.get("buyer") or "UNVERIFIED",
-        row.get("buyer_org_type") or "UNVERIFIED",
-        row.get("sector") or "UNVERIFIED",
-        row.get("source"),
-        row.get("notice_type") or row.get("uk_stage") or "UNVERIFIED",
-        row.get("indicative_value") or "Not stated",
-        _cpv_text(row),
-        (row.get("deadline") or "")[:10] or "UNVERIFIED",
-        target.upper(),
-        _capability_fit(row),
-        f"{framework.get('outcome', 'UNVERIFIED')}: {framework.get('reason', '')}".rstrip(": "),
-        "Clean",
-        assessment.get("overall_reasoning") if approved else decision.get("reason"),
-        "Victoria to make final go/no-go decision" if approved else "Closed after owner Phase 2 review",
-        (decision.get("changed_at") or "")[:10],
-        _open_questions(row) if approved else "",
+        context["notice_reference"],
+        context["published_date"],
+        context["title"],
+        context["buyer"],
+        MISSING,
+        context["sector"],
+        context["source_portal"],
+        MISSING,
+        f"{context['value_estimate']} {context['currency']}" if context["value_estimate"] != MISSING else MISSING,
+        "; ".join(context["cpv_codes"]) or MISSING,
+        context["submission_deadline"],
+        _target_sheet(context, decision).upper(),
+        f"{context['ai_read']['capability_fit']}: {reasoning.get('capability_fit', MISSING)}",
+        context["framework_status"],
+        MISSING,
+        reasoning.get("overall", decision["reason"] or MISSING),
+        "Victoria to make GO / NO-GO / Park decision" if decision["to_status"] != "REJECTED" else "Closed after owner Phase 2 review",
+        context["submission_deadline"] if decision["to_status"] != "REJECTED" else MISSING,
+        " | ".join(str(value) for value in questions) or MISSING,
     ]
 
 
-def _max_tracker_number(workbook) -> int:
-    maximum = 0
-    for sheet in workbook.worksheets:
-        for cell in sheet["A"]:
-            match = re.fullmatch(r"N(\d+)", str(cell.value or "").strip())
-            if match:
-                maximum = max(maximum, int(match.group(1)))
-    return maximum
+def _snapshot_styles(workbook):
+    snapshots = {}
+    for sheet_name in TRACKER_SHEETS:
+        sheet = workbook[sheet_name]
+        source_row = 3
+        snapshots[sheet_name] = [copy(sheet.cell(source_row, column)._style) for column in range(1, 20)]
+    return snapshots
 
 
-def _existing_rows(workbook) -> dict[tuple[str, str], tuple[str, int, str]]:
+def _clear_sample_rows(workbook):
+    for sheet_name in CLEAR_SHEETS:
+        sheet = workbook[sheet_name]
+        for row in range(3, sheet.max_row + 1):
+            for column in range(1, 20):
+                sheet.cell(row, column).value = None
+                sheet.cell(row, column).hyperlink = None
+
+
+def _template_or_existing(output: Path):
+    if output.exists():
+        workbook = load_workbook(output)
+        headers = tuple(workbook["Flag"].cell(2, column).value for column in range(1, 20))
+        if headers == HEADERS:
+            return workbook, False
+    return load_workbook(TEMPLATE_PATH), True
+
+
+def update_trifork_pipeline(conn: sqlite3.Connection, output_path: str) -> dict[str, int | str]:
+    output = Path(output_path)
+    workbook, fresh = _template_or_existing(output)
+    styles = _snapshot_styles(workbook)
+    if fresh:
+        _clear_sample_rows(workbook)
+
     existing = {}
     for sheet_name in TRACKER_SHEETS:
         sheet = workbook[sheet_name]
-        for row_number in range(3, sheet.max_row + 1):
-            title = sheet.cell(row_number, 3).value
-            buyer = sheet.cell(row_number, 4).value
-            if title:
-                existing[(_normalise(title), _normalise(buyer))] = (
-                    sheet_name, row_number, str(sheet.cell(row_number, 1).value or "")
-                )
-    return existing
+        for row in range(3, sheet.max_row + 1):
+            reference = sheet.cell(row, 1).value
+            if reference:
+                existing[str(reference)] = (sheet_name, row)
 
-
-def _copy_row_style(source_sheet, source_row: int, target_sheet, target_row: int) -> None:
-    target_sheet.row_dimensions[target_row].height = source_sheet.row_dimensions[source_row].height
-    for column in range(1, len(HEADERS) + 1):
-        source = source_sheet.cell(source_row, column)
-        target = target_sheet.cell(target_row, column)
-        if source.has_style:
-            target._style = copy(source._style)
-        target.number_format = source.number_format
-        target.alignment = copy(source.alignment)
-
-
-def update_trifork_pipeline(
-    conn: sqlite3.Connection, template_path: str, output_path: str
-) -> dict[str, int | str]:
-    template = Path(template_path)
-    output = Path(output_path)
-    if not template.exists():
-        raise FileNotFoundError(f"Trifork pipeline template not found: {template}")
-    if template.resolve() == output.resolve():
-        raise ValueError("Trifork pipeline template and output must be different files")
-
-    workbook = load_workbook(template)
-    for sheet_name in TRACKER_SHEETS:
-        headers = tuple(workbook[sheet_name].cell(2, column).value for column in range(1, 20))
-        if headers != HEADERS:
-            raise ValueError(f"Unexpected columns in tracker sheet {sheet_name}")
-
-    style_sheet = workbook["Flag"]
-    style_row = 3
-    existing = _existing_rows(workbook)
-    next_number = _max_tracker_number(workbook) + 1
-    decisions = _decision_rows(conn)
-    counts = {"Pass": 0, "Flag": 0, "Fail": 0}
-
-    removals: dict[str, list[int]] = {name: [] for name in TRACKER_SHEETS}
-    prepared = []
-    for row in decisions:
-        key = (_normalise(row.get("title")), _normalise(row.get("buyer")))
-        match = existing.get(key)
-        if match:
-            old_sheet, old_row, tracker_ref = match
-            removals[old_sheet].append(old_row)
+    inserted = updated = skipped = 0
+    for notice_id in _owner_reviewed_notice_ids(conn):
+        context = build_context(conn, notice_id)
+        if any(context[key] == MISSING for key in ("notice_reference", "title", "buyer", "sector", "owner_name")):
+            skipped += 1
+            continue
+        decision = _decision_target(conn, notice_id)
+        target_name = _target_sheet(context, decision)
+        reference = context["notice_reference"]
+        old = existing.get(reference)
+        if old:
+            old_sheet, old_row = old
+            if old_sheet != target_name:
+                for column in range(1, 20):
+                    workbook[old_sheet].cell(old_row, column).value = None
+                old = None
+        if old:
+            row_number = old[1]
+            updated += 1
         else:
-            tracker_ref = f"N{next_number:03d}"
-            next_number += 1
-        prepared.append((row, tracker_ref))
-
-    for sheet_name, row_numbers in removals.items():
-        sheet = workbook[sheet_name]
-        for row_number in sorted(set(row_numbers), reverse=True):
-            sheet.delete_rows(row_number)
-
-    for row, tracker_ref in prepared:
-        target_name = _target_sheet(row)
-        target = workbook[target_name]
-        target_row = max(target.max_row + 1, 3)
-        _copy_row_style(style_sheet, style_row, target, target_row)
-        for column, value in enumerate(_row_values(row, tracker_ref), start=1):
-            target.cell(target_row, column).value = value
-        counts[target_name] += 1
+            target = workbook[target_name]
+            occupied = [row for row in range(3, target.max_row + 1) if target.cell(row, 1).value]
+            row_number = max(occupied, default=2) + 1
+            inserted += 1
+        sheet = workbook[target_name]
+        for column, value in enumerate(_row_values(context, decision), start=1):
+            cell = sheet.cell(row_number, column)
+            cell._style = copy(styles[target_name][column - 1])
+            cell.value = value
+        existing[reference] = (target_name, row_number)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(".tmp.xlsx")
     workbook.save(temporary)
     temporary.replace(output)
-    return {**counts, "total": len(prepared), "output_path": str(output)}
+    return {
+        "inserted": inserted, "updated": updated, "skipped": skipped,
+        "total": len(existing), "output_path": str(output),
+    }
 
 
-def update_configured_trifork_pipeline(conn: sqlite3.Connection) -> dict[str, int | str] | None:
-    template_path = os.environ.get("TRIFORK_PIPELINE_TEMPLATE_PATH")
+def update_configured_trifork_pipeline(conn: sqlite3.Connection):
     output_path = os.environ.get("TRIFORK_PIPELINE_OUTPUT_PATH")
-    if not template_path or not output_path:
-        return None
-    return update_trifork_pipeline(conn, template_path, output_path)
+    return update_trifork_pipeline(conn, output_path) if output_path else None
