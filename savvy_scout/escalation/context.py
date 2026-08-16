@@ -180,6 +180,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         "currency": currency,
         "route_to_market": _display(notice["procurement_method_details"] or notice["procurement_method"]),
         "framework_status": framework_gate["reason"] if framework_gate else MISSING,
+        "date_spotted": _iso_date(notice["first_seen_at"]),
         "published_date": _iso_date(notice["published_at"]),
         "clarification_deadline": _iso_date(notice["enquiry_period_end"]),
         "submission_deadline": _iso_date(notice["deadline"]),

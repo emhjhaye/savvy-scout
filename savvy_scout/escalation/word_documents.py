@@ -200,6 +200,32 @@ def _capability_mapping_rows(context):
     )]
 
 
+def _pipeline_reference(context):
+    return f"N{context['notice_id']:03d}"
+
+
+def _tracker_status_text(context):
+    overall = context["ai_read"]["overall"]
+    sheet = "Pass" if overall == "PURSUE" else "Flag"
+    return (
+        f"{overall}, {context['ai_read']['capability_fit']} capability fit, "
+        f"in {sheet} tab, My_Trifork_Pipeline_Tracker.xlsx"
+    )
+
+
+def _client_brief_status_text(context):
+    return (
+        f"Drafted {context['generated_at'][:10]}. PROVISIONAL — awaiting Victoria's "
+        f"GO / NO-GO / Park decision before any release to Trifork."
+    )
+
+
+def _notice_reference_with_source(context):
+    if context["source_portal"] != MISSING:
+        return f"{context['notice_reference']}, {context['source_portal']}"
+    return context["notice_reference"]
+
+
 def _final_decision_text(context):
     actions = context["immediate_actions"]
     action_text = ""
@@ -354,18 +380,18 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         _set_cell(tables[2].cell(index, 1), f"{gate['result']}. {gate['reason']}" if gate else MISSING)
 
     metadata = (
-        ("Escalated by", context["escalated_by"]),
-        ("Escalated at", context["escalated_at"]),
-        ("Notice reference", context["notice_reference"]),
+        ("Spotted by", f"{context['owner_name']}, Bid Savvy Solutions Ltd" if context["owner_name"] != MISSING else MISSING),
+        ("Date spotted", context["date_spotted"]),
+        ("Pipeline reference", _pipeline_reference(context)),
         ("Phase 2 status", f"{context['ai_read']['overall']} — PROVISIONAL — FOR VALIDATION"),
-        ("Tracker stage", context["stage"]),
-        ("Submission deadline", context["submission_deadline"]),
-        ("Notice link", context["notice_url"]),
+        ("Client brief status", _client_brief_status_text(context)),
+        ("Tracker status", _tracker_status_text(context)),
+        ("Notice reference", _notice_reference_with_source(context)),
     )
     for row_index, (field, value) in enumerate(metadata, start=1):
         _set_cell(tables[3].cell(row_index, 0), field)
-        if field == "Notice link" and context["notice_url"] != MISSING:
-            _set_hyperlink(tables[3].cell(row_index, 1), "Open published notice", context["notice_url"])
+        if field == "Notice reference" and context["notice_url"] != MISSING:
+            _set_hyperlink(tables[3].cell(row_index, 1), value, context["notice_url"])
         else:
             _set_cell(tables[3].cell(row_index, 1), value)
 
