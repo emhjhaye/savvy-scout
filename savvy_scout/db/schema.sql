@@ -337,7 +337,22 @@ CREATE TABLE IF NOT EXISTS phase2_assessments (
     positioning_points TEXT,
     blockers TEXT,
     asks TEXT,
-    recommendation TEXT
+    recommendation TEXT,
+    -- Rich narrative content for the Internal Addendum / Capture Brief
+    -- (2026-08-16), written directly by the Phase 2 AI from the full notice
+    -- text rather than assembled by regex-splitting raw text at document-build
+    -- time. executive_summary is a JSON object {opening, scope_summary,
+    -- executive_view}; key_terms and procurement_timetable and
+    -- decision_framework are JSON arrays of {term, meaning} /
+    -- {milestone, date} / {question, implication}; engagement_model is a JSON
+    -- object {model, how_to_respond}. All nullable; existing assessments just
+    -- don't have them until re-run.
+    executive_summary TEXT,
+    key_terms TEXT,
+    scope_of_requirement TEXT,
+    engagement_model TEXT,
+    procurement_timetable TEXT,
+    decision_framework TEXT
 );
 
 -- Phase B: escalation briefs (B3). One row per auto-generated brief.

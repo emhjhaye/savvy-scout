@@ -112,6 +112,73 @@ def _scope_points(context):
     return points or ["Detailed scope is not stated in the published notice."]
 
 
+def _requirement_areas(context):
+    areas = context["scope_of_requirement"].get("requirement_areas")
+    if areas:
+        return areas
+    return _scope_points(context)
+
+
+def _what_buyer_seeking(context):
+    text = context["scope_of_requirement"].get("what_buyer_is_seeking")
+    if text:
+        return text
+    return f"{context['route_to_market']} route to market." if context["route_to_market"] != MISSING else "Not stated in the notice."
+
+
+def _engagement_model_text(context):
+    model = context["engagement_model"]
+    if model.get("model") or model.get("how_to_respond"):
+        model_text = model.get("model") or MISSING
+        how_to = model.get("how_to_respond") or MISSING
+        return f"{model_text}. {how_to}"
+    return "UNVERIFIED — the notice does not state how a bidder responds to this engagement."
+
+
+def _key_terms_rows(context):
+    return [(item.get("term", MISSING), item.get("meaning", MISSING)) for item in context["key_terms"]]
+
+
+def _decision_framework_rows(context):
+    rows = context["decision_framework"]
+    if rows:
+        return [(row.get("question", MISSING), row.get("implication", MISSING)) for row in rows]
+    return [(_item_text(ask, ("ask", "why_it_matters")), "Requires validation before decision") for ask in _victoria_asks_or_ai(context)]
+
+
+def _victoria_asks_or_ai(context):
+    return context["direct_asks"] or _victoria_asks(context)
+
+
+def _timetable_rows(context):
+    ai_timetable = context["procurement_timetable_ai"]
+    if ai_timetable:
+        return [(row.get("milestone", MISSING), row.get("date", MISSING)) for row in ai_timetable]
+    return [
+        ("Notice published", context["published_date"]),
+        ("Clarification deadline", context["clarification_deadline"]),
+        ("Submission deadline", context["submission_deadline"]),
+    ]
+
+
+def _immediate_action_rows(context):
+    actions = context["immediate_actions"]
+    if actions:
+        return [(action, context["owner_name"]) for action in actions]
+    return [(_recommended_action(context), context["owner_name"])]
+
+
+def _capability_mapping_rows(context):
+    mapping = context["capability_mapping"]
+    if mapping:
+        return [(row.get("problem", MISSING), row.get("capability_mapping", MISSING)) for row in mapping]
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    return [(
+        "Capability fit assessment",
+        f"{context['ai_read']['capability_fit']} — {reasoning.get('capability_fit', MISSING)}",
+    )]
+
+
 def _format_value(context):
     if context["value_estimate"] == MISSING or str(context["value_estimate"]) in ("0", "0.0"):
         return "Not stated"
@@ -146,6 +213,9 @@ def _victoria_asks(context):
 
 
 def _executive_summary(context):
+    ai_summary = context["executive_summary_ai"]
+    if ai_summary.get("opening") and ai_summary.get("scope_summary") and ai_summary.get("executive_view"):
+        return ai_summary["opening"], ai_summary["scope_summary"], ai_summary["executive_view"]
     verb = "is seeking market input on" if context["uk_stage"] == "UK2" else "is procuring"
     scope = _scope_points(context)
     first = f"{context['buyer']} {verb} {context['title']}."
@@ -202,7 +272,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         ("Escalated by", context["escalated_by"]),
         ("Escalated at", context["escalated_at"]),
         ("Notice reference", context["notice_reference"]),
-        ("Phase 2 status", f"{context['ai_read']['overall']} — PROVISIONAL, FOR VALIDATION"),
+        ("Phase 2 status", f"{context['ai_read']['overall']} — PROVISIONAL — FOR VALIDATION"),
         ("Tracker stage", context["stage"]),
         ("Submission deadline", context["submission_deadline"]),
         ("Notice link", context["notice_url"]),
@@ -214,19 +284,13 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         else:
             _set_cell(tables[3].cell(row_index, 1), value)
 
-    reasoning = context["ai_read"].get("per_field_reasoning", {})
-    capabilities = (
-        ("Capability fit", f"{context['ai_read']['capability_fit']} — {reasoning.get('capability_fit', MISSING)}"),
-        ("Competitor position", f"{context['ai_read']['competitor_position']} — {reasoning.get('competitor_position', MISSING)}"),
-        ("Right to win", f"{context['ai_read']['right_to_win']} — {reasoning.get('right_to_win', MISSING)}"),
-        ("Overall", f"{context['ai_read']['overall']} — {reasoning.get('overall', MISSING)}"),
-        ("Validation status", "PROVISIONAL — FOR VALIDATION"),
-    )
-    _set_cell(tables[4].cell(0, 0), "Capability dimension")
-    _set_cell(tables[4].cell(0, 1), "Trifork capability assessment")
-    for row_index, (field, value) in enumerate(capabilities, start=1):
-        _set_cell(tables[4].cell(row_index, 0), field)
-        _set_cell(tables[4].cell(row_index, 1), value)
+    mapping_rows = _capability_mapping_rows(context)
+    _set_cell(tables[4].cell(0, 0), "Buyer problem")
+    _set_cell(tables[4].cell(0, 1), "Trifork capability mapping")
+    for row_index in range(1, len(tables[4].rows)):
+        problem, capability = mapping_rows[row_index - 1] if row_index <= len(mapping_rows) else (MISSING, MISSING)
+        _set_cell(tables[4].cell(row_index, 0), problem)
+        _set_cell(tables[4].cell(row_index, 1), capability)
 
     risks = context["blockers_risks"] or [MISSING]
     for row_index in range(1, len(tables[5].rows)):
@@ -234,7 +298,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         _set_cell(tables[5].cell(row_index, 0), f"Risk {row_index}")
         _set_cell(tables[5].cell(row_index, 1), _item_text(value, ("blocker", "assessment")))
 
-    asks = _victoria_asks(context)
+    asks = context["direct_asks"] or _victoria_asks(context)
     for row_index in range(1, len(tables[6].rows)):
         value = asks[row_index - 1] if row_index <= len(asks) else MISSING
         _set_cell(tables[6].cell(row_index, 0), _item_text(value, ("ask", "why_it_matters")))
@@ -268,23 +332,21 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         f"{context['notice_reference']} | {context['urgency']}\nPrepared for Victoria Milan | "
         f"{context['generated_at'][:10]}",
     )
+    executive_view = context["executive_summary_ai"].get("executive_view") or _first_sentences(
+        context["ai_read"].get("per_field_reasoning", {}).get("capability_fit"), 2, 420
+    )
     _set_cell(
         tables[1].cell(0, 0),
-        f"Why this matters: {_first_sentences(context['ai_read'].get('per_field_reasoning', {}).get('capability_fit'), 2, 420)} "
+        f"Why this matters: {executive_view} "
         f"Decision point: {_recommended_action(context)} PROVISIONAL — FOR VALIDATION.",
     )
     _set_cell(tables[2].cell(0, 0), f"Submission deadline: {context['submission_deadline']} | {context['urgency']}")
 
-    terms = (
-        ("Source", context["source_portal"]),
-        ("CPV codes", ", ".join(context["cpv_codes"]) or MISSING),
-        ("Route to market", context["route_to_market"]),
-        ("Framework status", context["framework_status"]),
-        ("Stage", context["stage"]),
-    )
-    for row_index, (field, value) in enumerate(terms, start=1):
-        _set_cell(tables[3].cell(row_index, 0), field)
-        _set_cell(tables[3].cell(row_index, 1), value)
+    key_terms = _key_terms_rows(context) or [("None", "The notice is in plain English; no jargon requires explanation.")]
+    for row_index in range(1, len(tables[3].rows)):
+        term, meaning = key_terms[row_index - 1] if row_index <= len(key_terms) else ("", "")
+        _set_cell(tables[3].cell(row_index, 0), term)
+        _set_cell(tables[3].cell(row_index, 1), meaning)
 
     info = (
         ("Contracting authority", context["buyer"]),
@@ -304,12 +366,9 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         else:
             _set_cell(tables[4].cell(row_index, 1), value)
 
-    milestones = (
-        ("Notice published", context["published_date"]),
-        ("Clarification deadline", context["clarification_deadline"]),
-        ("Submission deadline", context["submission_deadline"]),
-    )
-    for row_index, (field, value) in enumerate(milestones, start=1):
+    milestones = _timetable_rows(context)
+    for row_index in range(1, len(tables[5].rows)):
+        field, value = milestones[row_index - 1] if row_index <= len(milestones) else (MISSING, MISSING)
         _set_cell(tables[5].cell(row_index, 0), field)
         _set_cell(tables[5].cell(row_index, 1), value)
 
@@ -317,17 +376,17 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     _set_cell(tables[6].cell(1, 1), context["ai_read"]["competitor_position"])
     _set_cell(tables[6].cell(1, 2), context["ai_read"]["right_to_win"])
 
-    questions = _victoria_asks(context)
+    decision_rows = _decision_framework_rows(context)
     for row_index in range(1, len(tables[7].rows)):
-        question = questions[row_index - 1] if row_index <= len(questions) else MISSING
+        question, implication = decision_rows[row_index - 1] if row_index <= len(decision_rows) else (MISSING, MISSING)
         _set_cell(tables[7].cell(row_index, 0), question)
-        _set_cell(tables[7].cell(row_index, 1), "Requires validation before decision")
+        _set_cell(tables[7].cell(row_index, 1), implication)
 
-    actions = [_recommended_action(context)]
+    action_rows = _immediate_action_rows(context)
     for row_index in range(1, len(tables[8].rows)):
-        action = actions[row_index - 1] if row_index <= len(actions) else MISSING
-        _set_cell(tables[8].cell(row_index, 0), _item_text(action, ("ask", "why_it_matters")))
-        _set_cell(tables[8].cell(row_index, 1), context["owner_name"])
+        action, owner = action_rows[row_index - 1] if row_index <= len(action_rows) else (MISSING, MISSING)
+        _set_cell(tables[8].cell(row_index, 0), action)
+        _set_cell(tables[8].cell(row_index, 1), owner)
 
     summary = (
         ("Opportunity", context["title"]), ("Buyer", context["buyer"]),
@@ -346,16 +405,16 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         _set_cell(tables[9].cell(row_index, 1), value)
 
     executive = _executive_summary(context)
-    scope_points = _scope_points(context)
+    requirement_areas = _requirement_areas(context)
     replacements = {
         2: executive[0],
         3: executive[1],
         4: executive[2] + " PROVISIONAL — FOR VALIDATION.",
         14: "The published notice describes the following scope:",
         23: "What the buyer is seeking from this engagement",
-        24: context["route_to_market"] if context["route_to_market"] != MISSING else "Route to market not stated in the notice.",
+        24: _what_buyer_seeking(context),
         25: "Engagement model",
-        26: context["stage"],
+        26: _engagement_model_text(context),
         30: f"Capability fit: {context['ai_read']['capability_fit']}",
         31: context["ai_read"].get("per_field_reasoning", {}).get("capability_fit", MISSING),
         36: f"Competitive risk: {context['ai_read']['competitor_position']}",
@@ -370,10 +429,12 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     for index, value in replacements.items():
         if index < len(paragraphs):
             _set_paragraph(paragraphs[index], value)
-    scope_paragraphs = paragraphs[15:23]
+    # paragraphs[15] is the "Documented requirement areas" sub-heading itself
+    # and must be left untouched; only 16-22 (7 slots) are the bullet items.
+    scope_paragraphs = paragraphs[16:23]
     for index, paragraph in enumerate(scope_paragraphs):
-        if index < len(scope_points):
-            _set_paragraph(paragraph, scope_points[index])
+        if index < len(requirement_areas):
+            _set_paragraph(paragraph, requirement_areas[index])
         else:
             _remove_paragraph(paragraph)
     for paragraph in paragraphs[32:36]:

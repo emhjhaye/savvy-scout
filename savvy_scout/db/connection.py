@@ -321,6 +321,16 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         if col not in assessment_cols:
             conn.execute(f"ALTER TABLE phase2_assessments ADD COLUMN {col} TEXT")
 
+    # Rich narrative fields for the Internal Addendum / Capture Brief
+    # (2026-08-16) -- see schema.sql's comment on phase2_assessments. All
+    # nullable; existing assessments just don't have them until re-run.
+    for col in (
+        "executive_summary", "key_terms", "scope_of_requirement", "engagement_model",
+        "procurement_timetable", "decision_framework",
+    ):
+        if col not in assessment_cols:
+            conn.execute(f"ALTER TABLE phase2_assessments ADD COLUMN {col} TEXT")
+
     # Blockers/capability profile prompt correction (2026-08-12, Victoria
     # Milan's ruling of 11 August 2026): the previously-seeded capability
     # profile framed UK track record/references/clearance/staff scale as

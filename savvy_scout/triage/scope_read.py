@@ -61,6 +61,107 @@ SCOPE_READ_SCHEMA = {
             "additionalProperties": False,
         },
         "open_questions": {"type": "array", "items": {"type": "string"}},
+        # Written narrative for the Internal Addendum / Capture Brief,
+        # addressed to Victoria as the person deciding GO / NO-GO / Park --
+        # proper prose, not a copy of notice text. opening states who the
+        # buyer is and what they want in one sentence; scope_summary
+        # synthesises what's actually being asked for (not a line-by-line
+        # dump of the notice); executive_view gives Victoria the read that
+        # actually helps her decide.
+        "executive_summary": {
+            "type": "object",
+            "properties": {
+                "opening": {"type": "string"},
+                "scope_summary": {"type": "string"},
+                "executive_view": {"type": "string"},
+            },
+            "required": ["opening", "scope_summary", "executive_view"],
+            "additionalProperties": False,
+        },
+        # A short glossary of jargon, acronyms or scheme names that actually
+        # appear in the notice and that Victoria (not a procurement
+        # specialist) would need explained to follow the brief -- e.g. LCCC,
+        # CfD, PME, a named framework. Only terms genuinely present in the
+        # notice text; do not invent a glossary where the notice is plain
+        # English. An empty list is a valid result.
+        "key_terms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "term": {"type": "string"},
+                    "meaning": {"type": "string"},
+                },
+                "required": ["term", "meaning"],
+                "additionalProperties": False,
+            },
+        },
+        # Section 5 breakdown ("Scope of Requirement"): distinct requirement
+        # areas actually stated in the notice, each a short synthesised
+        # phrase (e.g. "Settlement calculations, covering an increasing
+        # scale and volume of transactions"), never a raw sentence lifted
+        # verbatim from the notice text. what_buyer_is_seeking is one
+        # sentence naming the underlying reason the buyer is going to
+        # market (e.g. testing feasibility, exploring the market ahead of a
+        # future procurement).
+        "scope_of_requirement": {
+            "type": "object",
+            "properties": {
+                "requirement_areas": {"type": "array", "items": {"type": "string"}},
+                "what_buyer_is_seeking": {"type": "string"},
+            },
+            "required": ["requirement_areas", "what_buyer_is_seeking"],
+            "additionalProperties": False,
+        },
+        # How a bidder actually engages with this procurement -- the
+        # submission portal/route, response format, and any named contact
+        # or supplier-engagement stage the notice describes. This is NOT the
+        # opportunity's internal workflow stage (escalated/approved/etc) --
+        # it is what the notice itself says about how to respond. Say
+        # UNVERIFIED where the notice doesn't state it.
+        "engagement_model": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "how_to_respond": {"type": "string"},
+            },
+            "required": ["model", "how_to_respond"],
+            "additionalProperties": False,
+        },
+        # Concrete dated milestones stated in the notice (clarification
+        # deadline, submission deadline, envisaged contract start, etc.),
+        # beyond the dates already captured structurally. Use UNVERIFIED for
+        # the date where the notice names the milestone but not a date. An
+        # empty list is valid if the notice states nothing beyond the
+        # structured deadline fields.
+        "procurement_timetable": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "milestone": {"type": "string"},
+                    "date": {"type": "string"},
+                },
+                "required": ["milestone", "date"],
+                "additionalProperties": False,
+            },
+        },
+        # Genuine GO/NO-GO decision points for Victoria, each framed as a
+        # question with what a yes/no answer implies for the recommendation
+        # -- not a restatement of asks (which are questions FOR Trifork/the
+        # buyer); these are questions Victoria herself needs to weigh.
+        "decision_framework": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "implication": {"type": "string"},
+                },
+                "required": ["question", "implication"],
+                "additionalProperties": False,
+            },
+        },
         # Internal Addendum Section C ("Why this is a high fit"): each
         # buyer-side problem paired with the specific Trifork capability/case
         # study that maps to it -- name real case studies from the profile
@@ -147,6 +248,8 @@ SCOPE_READ_SCHEMA = {
     "required": [
         "capability_fit", "competitor_position", "right_to_win", "overall", "open_questions",
         "capability_mapping", "positioning_points", "blockers", "asks", "recommendation",
+        "executive_summary", "key_terms", "scope_of_requirement", "engagement_model",
+        "procurement_timetable", "decision_framework",
     ],
     "additionalProperties": False,
 }
@@ -234,6 +337,37 @@ Rules:
 
 12. immediate_actions: concrete next steps with owners and dates where known, not vague
     encouragement.
+
+13. executive_summary, key_terms, engagement_model, procurement_timetable, decision_framework:
+    you are writing directly for Victoria Milan to make a GO / NO-GO / Park call. Write like you
+    are briefing her in person, not like you are filling in a form:
+    - executive_summary: real prose in full sentences. opening names the buyer and what they
+      actually want, in plain English. scope_summary synthesises the requirement -- what problem
+      the buyer is solving and what they're asking a supplier to do -- never a line-by-line copy
+      or paraphrase-in-order of the notice text. executive_view is your own judgement of whether
+      this is worth pursuing and why, referencing the capability_fit and right_to_win ratings.
+    - key_terms: only acronyms, scheme names or jargon that genuinely appear in the notice and
+      that someone outside procurement would stumble on (e.g. LCCC, CfD, PME, a named framework).
+      Do not pad this with generic procurement terms everyone already knows. Empty list if the
+      notice is plain English.
+    - scope_of_requirement: requirement_areas is a short list of distinct requirement areas,
+      each your own synthesised phrase (a handful of words to one short sentence), never a
+      sentence lifted verbatim from the notice. what_buyer_is_seeking is one sentence on why the
+      buyer is going to market now (e.g. testing feasibility ahead of a future procurement,
+      replacing an incumbent, meeting a compliance deadline).
+    - engagement_model: describes how a bidder actually engages with THIS procurement -- the
+      submission route or portal named in the notice, the response format, any market-engagement
+      or clarification stage described. Never describe our own internal workflow status
+      (escalated, approved, flagged) here -- that is a different concept entirely and does not
+      belong in this field under any circumstance. If the notice doesn't say, use UNVERIFIED for
+      both fields.
+    - procurement_timetable: only genuine dated (or explicitly-undated-but-named) milestones from
+      the notice text itself, beyond the structured deadline fields you're separately given.
+    - decision_framework: 2-4 questions Victoria herself would weigh to decide GO/NO-GO/Park (for
+      example, whether a stated risk is acceptable, whether the timeline allows a competitive
+      response, whether the positioning points can realistically be addressed in time), each
+      paired with what a yes or a no means for the recommendation. These are decisions FOR
+      Victoria, distinct from asks (which are questions routed TO Trifork/the buyer).
 
 This is a provisional, machine-generated read for a human to validate, not a bid decision."""
 
@@ -364,8 +498,11 @@ def save_scope_read(
         "competitor_position_rating, competitor_position_reasoning, "
         "right_to_win_rating, right_to_win_reasoning, "
         "overall_rating, overall_reasoning, open_questions, "
-        "capability_mapping, positioning_points, blockers, asks, recommendation, model_used, created_at"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "capability_mapping, positioning_points, blockers, asks, recommendation, "
+        "executive_summary, key_terms, scope_of_requirement, engagement_model, "
+        "procurement_timetable, decision_framework, "
+        "model_used, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             notice_id,
             assessment["capability_fit"]["rating"],
@@ -382,6 +519,12 @@ def save_scope_read(
             json.dumps(assessment["blockers"]) if assessment.get("blockers") else None,
             json.dumps(assessment["asks"]) if assessment.get("asks") else None,
             json.dumps(assessment["recommendation"]) if assessment.get("recommendation") else None,
+            json.dumps(assessment["executive_summary"]) if assessment.get("executive_summary") else None,
+            json.dumps(assessment["key_terms"]) if assessment.get("key_terms") else None,
+            json.dumps(assessment["scope_of_requirement"]) if assessment.get("scope_of_requirement") else None,
+            json.dumps(assessment["engagement_model"]) if assessment.get("engagement_model") else None,
+            json.dumps(assessment["procurement_timetable"]) if assessment.get("procurement_timetable") else None,
+            json.dumps(assessment["decision_framework"]) if assessment.get("decision_framework") else None,
             model_used,
             now,
         ),

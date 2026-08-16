@@ -136,6 +136,14 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         blockers = _json_value(assessment["blockers"], [])
         asks = _json_value(assessment["asks"], [])
         recommendation = _json_value(assessment["recommendation"], {})
+        capability_mapping = _json_value(assessment["capability_mapping"], [])
+        positioning_points = _json_value(assessment["positioning_points"], [])
+        executive_summary = _json_value(assessment["executive_summary"], {})
+        key_terms = _json_value(assessment["key_terms"], [])
+        scope_of_requirement = _json_value(assessment["scope_of_requirement"], {})
+        engagement_model = _json_value(assessment["engagement_model"], {})
+        procurement_timetable = _json_value(assessment["procurement_timetable"], [])
+        decision_framework = _json_value(assessment["decision_framework"], [])
     else:
         ai_read = {
             "capability_fit": MISSING,
@@ -147,6 +155,9 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
             "status": "No AI read on file",
         }
         blockers, asks, recommendation = [], [], {}
+        capability_mapping, positioning_points = [], []
+        executive_summary, key_terms, scope_of_requirement, engagement_model = {}, [], {}, {}
+        procurement_timetable, decision_framework = [], []
 
     framework_gate = next((gate for gate in gates if "framework" in gate["gate_name"].casefold()), None)
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -175,6 +186,15 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         "ai_read": ai_read,
         "blockers_risks": blockers,
         "direct_asks": asks,
+        "capability_mapping": capability_mapping,
+        "positioning_points": positioning_points,
+        "immediate_actions": recommendation.get("immediate_actions", []),
+        "executive_summary_ai": executive_summary,
+        "key_terms": key_terms,
+        "scope_of_requirement": scope_of_requirement,
+        "engagement_model": engagement_model,
+        "procurement_timetable_ai": procurement_timetable,
+        "decision_framework": decision_framework,
         "recommended_next_action": _display(
             recommendation.get("decision") or (owner_decision["reason"] if owner_decision else None)
         ),
