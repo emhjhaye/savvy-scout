@@ -60,3 +60,15 @@ def test_tracker_preserves_template_and_upserts_by_notice_reference(conn, tmp_pa
     assert references["Fail"] == ["REF-FAIL"]
     assert "REF-SYSTEM" not in references["Pass"] + references["Flag"] + references["Fail"]
     assert "REF-NO-ASSESSMENT" not in references["Pass"] + references["Flag"] + references["Fail"]
+
+
+def test_zero_value_is_presented_as_not_stated(conn, tmp_path):
+    notice_id = _notice(conn, "REF-ZERO", "REJECTED", rating="DECLINE")
+    conn.execute("UPDATE notices SET indicative_value = '0.0 GBP' WHERE id = ?", (notice_id,))
+    conn.commit()
+    output = tmp_path / "tracker.xlsx"
+
+    update_trifork_pipeline(conn, str(output))
+
+    workbook = load_workbook(output)
+    assert workbook["Fail"]["I3"].value == "Not stated"

@@ -1,11 +1,13 @@
-import json
 import os
+import re
 import sqlite3
 from copy import copy
-from datetime import datetime, timezone
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Font
 
 from savvy_scout.escalation.context import MISSING, OWNER_NAMES, build_context
 
@@ -52,29 +54,192 @@ def _target_sheet(context, decision):
     return "Pass" if context["ai_read"]["overall"] == "PURSUE" else "Flag"
 
 
-def _row_values(context, decision):
+def _format_date(value):
+    if value in (None, "", MISSING):
+        return MISSING
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.strftime("%d/%m/%Y")
+    except ValueError:
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            return str(value)
+
+
+def _buyer_type(value):
+    if value in (None, "", MISSING):
+        return "Unconfirmed — verify from the notice"
+    mappings = {
+        "public authority - central government": "Central government public authority",
+        "public authority - sub-central government": "Sub-central public authority",
+        "private sector": "Private-sector buyer",
+    }
+    return mappings.get(str(value).casefold(), str(value))
+
+
+def _notice_type(context):
+    stage = context["uk_stage"]
+    label = {
+        "UK1": "UK1 Pipeline notice",
+        "UK2": "UK2 Preliminary Market Engagement",
+        "UK3": "UK3 Planned procurement notice",
+        "UK4": "UK4 Tender notice",
+        "UK5": "UK5 Award notice",
+    }.get(stage)
+    if label:
+        return label
+    return context["notice_type"] if context["notice_type"] != MISSING else "Unconfirmed — verify notice type"
+
+
+def _format_value(context):
+    if context["value_estimate"] == MISSING:
+        return "Not stated"
+    try:
+        amount = Decimal(str(context["value_estimate"]))
+        if amount == 0:
+            return "Not stated"
+        formatted = f"{amount:,.0f}" if amount == amount.to_integral() else f"{amount:,.2f}"
+    except (InvalidOperation, ValueError):
+        return str(context["value_estimate"])
+    symbol = {"GBP": "£", "EUR": "€", "USD": "$"}.get(context["currency"])
+    return f"{symbol}{formatted}" if symbol else f"{formatted} {context['currency']}"
+
+
+def _assessment_text(context):
     reasoning = context["ai_read"].get("per_field_reasoning", {})
-    questions = context["ai_read"].get("open_questions", [])
+    rating = context["ai_read"]["capability_fit"]
+    return f"{rating}: {reasoning.get('capability_fit', MISSING)}"
+
+
+def _first_sentences(value, count=1, limit=240):
+    text = " ".join(str(value or MISSING).split())
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    result = " ".join(sentences[:count])
+    if len(result) <= limit:
+        return result
+    shortened = result[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:-")
+    return shortened + "…"
+
+
+def _source_url(context):
+    if context["source_portal"].casefold() == "find a tender" and re.fullmatch(
+        r"\d{6}-\d{4}", context["notice_reference"]
+    ):
+        return f"https://www.find-tender.service.gov.uk/Notice/{context['notice_reference']}"
+    return context["notice_url"]
+
+
+def _filter_flags(context):
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    combined = " ".join([
+        reasoning.get("capability_fit", ""), reasoning.get("right_to_win", ""),
+        *(_item_text(value) for value in context["blockers_risks"]),
+    ]).casefold()
+    flags = []
+    if context["ai_read"]["capability_fit"] == "LOW" and any(
+        phrase in combined for phrase in ("capability gap", "not aligned", "lacks", "no plausible")
+    ):
+        flags.append("Filter 1 (capability/market category mismatch)")
+    if any(phrase in combined for phrase in ("security clearance", "sc clearance", "dv clearance")):
+        flags.append("Filter 2 (UK security clearance unconfirmed)")
+    scale_gate = next(
+        (gate for gate in context["gate_outcomes"] if "scale" in gate["gate_name"].casefold()), None
+    )
+    if scale_gate and scale_gate["result"] in ("FAIL", "FLAG"):
+        flags.append(f"Filter 3 ({scale_gate['reason']})")
+    return "; ".join(flags) if flags else "Clean"
+
+
+def _item_text(value):
+    if not isinstance(value, dict):
+        return str(value or "")
+    return " ".join(str(item) for item in value.values() if item)
+
+
+def _flag_reason(context, decision):
+    if decision["to_status"] == "REJECTED":
+        return (
+            f"FAIL after owner Phase 2 review. {context['ai_read'].get('per_field_reasoning', {}).get('overall', MISSING)} "
+            f"Owner reason: {decision['reason'] or MISSING}."
+        )
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    parts = [
+        f"FLAG — Trifork capability fit {context['ai_read']['capability_fit']}: "
+        f"{_first_sentences(reasoning.get('capability_fit'), 1, 180)}",
+        f"Right to win {context['ai_read']['right_to_win']}: "
+        f"{_first_sentences(reasoning.get('right_to_win'), 1, 150)}",
+    ]
+    if context["framework_status"] != MISSING:
+        framework = context["framework_status"]
+        if "route not yet decided" in framework.casefold():
+            framework = "Route not yet decided."
+        elif "unclear" in framework.casefold():
+            framework = "Framework status unconfirmed."
+        else:
+            framework = _first_sentences(framework, 1, 120)
+        parts.append(framework)
+    return " ".join(parts)
+
+
+def _deadline_state(context):
+    if context["submission_deadline"] == MISSING:
+        return None, False
+    try:
+        deadline = datetime.strptime(context["submission_deadline"], "%Y-%m-%d").date()
+        return deadline, deadline >= date.today()
+    except ValueError:
+        return None, False
+
+
+def _next_action(context, decision):
+    if decision["to_status"] == "REJECTED":
+        return "Record the owner Phase 2 rejection and take no further capture action.", MISSING
+    deadline, open_window = _deadline_state(context)
+    formatted = deadline.strftime("%d/%m/%Y") if deadline else MISSING
+    if open_window and context["uk_stage"] == "UK2":
+        return f"Subject to Victoria's approval, respond to the market engagement by {formatted}.", formatted
+    if open_window:
+        return f"Victoria to decide GO / NO-GO; if GO, begin capture before the {formatted} submission deadline.", formatted
+    if context["uk_stage"] == "UK2":
+        return "Market engagement deadline has passed; monitor for the formal procurement notice and confirm continued interest.", formatted
+    return "Confirm whether a replacement or amended procurement stage is open; otherwise close as expired.", formatted
+
+
+def _victoria_question(context, decision):
+    if decision["to_status"] == "REJECTED":
+        return MISSING
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    fit = _first_sentences(reasoning.get("capability_fit"), 1, 105)
+    return (
+        f"Does Victoria approve pursuing {context['title']} despite "
+        f"{context['ai_read']['capability_fit']} capability fit and "
+        f"{context['ai_read']['right_to_win']} right to win? Key issue: {fit}"
+    )
+
+
+def _row_values(context, decision):
+    next_action, action_date = _next_action(context, decision)
     return [
         context["notice_reference"],
-        context["published_date"],
+        _format_date(context["published_date"]),
         context["title"],
         context["buyer"],
-        MISSING,
+        _buyer_type(context["buyer_org_type"]),
         context["sector"],
         context["source_portal"],
-        MISSING,
-        f"{context['value_estimate']} {context['currency']}" if context["value_estimate"] != MISSING else MISSING,
+        _notice_type(context),
+        _format_value(context),
         "; ".join(context["cpv_codes"]) or MISSING,
-        context["submission_deadline"],
+        _format_date(context["submission_deadline"]),
         _target_sheet(context, decision).upper(),
-        f"{context['ai_read']['capability_fit']}: {reasoning.get('capability_fit', MISSING)}",
+        _assessment_text(context),
         context["framework_status"],
-        MISSING,
-        reasoning.get("overall", decision["reason"] or MISSING),
-        "Victoria to make GO / NO-GO / Park decision" if decision["to_status"] != "REJECTED" else "Closed after owner Phase 2 review",
-        context["submission_deadline"] if decision["to_status"] != "REJECTED" else MISSING,
-        " | ".join(str(value) for value in questions) or MISSING,
+        _filter_flags(context),
+        _flag_reason(context, decision),
+        next_action,
+        action_date,
+        _victoria_question(context, decision),
     ]
 
 
@@ -149,6 +314,18 @@ def update_trifork_pipeline(conn: sqlite3.Connection, output_path: str) -> dict[
             cell = sheet.cell(row_number, column)
             cell._style = copy(styles[target_name][column - 1])
             cell.value = value
+            base_font = copy(cell.font)
+            cell.font = Font(
+                name="Calibri", size=11, bold=base_font.bold, italic=base_font.italic,
+                color="0563C1" if column == 7 else "000000",
+                underline="single" if column == 7 else None,
+            )
+            if column in (13, 16, 17, 19):
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+            source_url = _source_url(context)
+            if column == 7 and source_url != MISSING:
+                cell.hyperlink = source_url
+        sheet.row_dimensions[row_number].height = 105
         existing[reference] = (target_name, row_number)
 
     output.parent.mkdir(parents=True, exist_ok=True)
