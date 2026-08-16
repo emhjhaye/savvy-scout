@@ -168,13 +168,22 @@ def _item_text(value):
 
 def _flag_reason(context, decision):
     if decision["to_status"] == "REJECTED":
+        gate_fail = next((gate for gate in context["gate_outcomes"] if gate["result"] == "FAIL"), None)
+        gate_text = f" Triage: {gate_fail['gate_name']} failed — {gate_fail['reason']}." if gate_fail else ""
         return (
-            f"FAIL after owner Phase 2 review. {context['ai_read'].get('per_field_reasoning', {}).get('overall', MISSING)} "
+            f"FAIL — rejected after owner Phase 2 review.{gate_text} "
+            f"{context['ai_read'].get('per_field_reasoning', {}).get('overall', MISSING)} "
             f"Owner reason: {decision['reason'] or MISSING}."
         )
+    # 2026-08-16, explicit request: this note is what the owner reads back to
+    # Victoria if she asks "why is this a Pass/Flag" -- it must be grounded in
+    # the specific opportunity, never a generic app/workflow label. The
+    # target-sheet label (PASS/FLAG) must match the row it actually lands on;
+    # this used to hardcode "FLAG" even on Pass rows.
+    label = "PASS" if _target_sheet(context, decision) == "Pass" else "FLAG"
     reasoning = context["ai_read"].get("per_field_reasoning", {})
     parts = [
-        f"FLAG — Trifork capability fit {context['ai_read']['capability_fit']}: "
+        f"{label} — Trifork capability fit {context['ai_read']['capability_fit']}: "
         f"{_first_sentences(reasoning.get('capability_fit'), 1, 180)}",
         f"Right to win {context['ai_read']['right_to_win']}: "
         f"{_first_sentences(reasoning.get('right_to_win'), 1, 150)}",
@@ -188,6 +197,8 @@ def _flag_reason(context, decision):
         else:
             framework = _first_sentences(framework, 1, 120)
         parts.append(framework)
+    if context["blockers_risks"]:
+        parts.append(f"Key risk: {_first_sentences(_item_text(context['blockers_risks'][0]), 1, 180)}")
     return " ".join(parts)
 
 

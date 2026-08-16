@@ -63,6 +63,23 @@ def test_tracker_preserves_template_and_upserts_by_notice_reference(conn, tmp_pa
     assert "REF-NO-ASSESSMENT" not in references["Pass"] + references["Flag"] + references["Fail"]
 
 
+def test_reason_notes_label_matches_the_sheet_a_row_actually_lands_on(conn, tmp_path):
+    """Regression (2026-08-16): the REASON / NOTES text hardcoded "FLAG -- "
+    even for notices that landed on the Pass sheet, so reading the note back
+    to Victoria would misdescribe a Pass opportunity as a Flag."""
+    _notice(conn, "REF-PASS-2", "ESCALATED_TO_VICTORIA", rating="PURSUE")
+    _notice(conn, "REF-FLAG-2", "ESCALATED_TO_VICTORIA", rating="FLAG")
+    _notice(conn, "REF-FAIL-2", "REJECTED", rating="DECLINE")
+    output = tmp_path / "tracker.xlsx"
+
+    update_trifork_pipeline(conn, str(output))
+
+    workbook = load_workbook(output)
+    assert workbook["Pass"].cell(3, 16).value.startswith("PASS — ")
+    assert workbook["Flag"].cell(3, 16).value.startswith("FLAG — ")
+    assert workbook["Fail"].cell(3, 16).value.startswith("FAIL — ")
+
+
 def test_tracker_links_to_recorded_addendum_and_brief(conn, tmp_path):
     notice_id = _notice(conn, "REF-LINKED", "ESCALATED_TO_VICTORIA", rating="FLAG")
     tracker_dir = tmp_path / "Pipeline Tracker"
