@@ -399,6 +399,8 @@ Rules:
       UK framework place, or specific delivery capacity). This is never a restatement of the
       overall PROCEED/PARK/DECLINE recommendation and never an administrative "prepared by"
       line -- it answers the specific question "alone or with someone else, and why".
+      recommendation itself is short, natural, human-written phrasing -- "Solo", "Partner",
+      "Solo at this stage" -- never a code-style token such as SOLO_ONLY or WITH_PARTNER.
     - decision_framework: 2-4 questions Victoria herself would weigh to decide GO/NO-GO/Park (for
       example, whether a stated risk is acceptable, whether the timeline allows a competitive
       response, whether the positioning points can realistically be addressed in time), each
