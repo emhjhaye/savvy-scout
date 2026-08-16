@@ -71,6 +71,27 @@ def _item_text(value, keys):
     return str(value or MISSING)
 
 
+def _split_ask(item):
+    if isinstance(item, dict):
+        return item.get("ask", MISSING), item.get("why_it_matters", MISSING)
+    return str(item), "Decision required from Victoria"
+
+
+def _split_blocker(item):
+    if isinstance(item, dict):
+        return item.get("blocker", MISSING), item.get("assessment", MISSING)
+    return str(item), MISSING
+
+
+def _trim_table_rows(table, last_row_to_keep):
+    """Removes trailing template rows beyond last_row_to_keep (0-indexed,
+    inclusive) so a short real list doesn't leave a wall of "--" placeholder
+    rows -- e.g. a genuinely empty blockers list should read as one clear
+    statement, not six blank "Risk N" rows."""
+    for row in list(table.rows[last_row_to_keep + 1:]):
+        table._tbl.remove(row._tr)
+
+
 def _sentence_case(value):
     text = " ".join(str(value or "").split())
     if not text:
@@ -143,7 +164,7 @@ def _decision_framework_rows(context):
     rows = context["decision_framework"]
     if rows:
         return [(row.get("question", MISSING), row.get("implication", MISSING)) for row in rows]
-    return [(_item_text(ask, ("ask", "why_it_matters")), "Requires validation before decision") for ask in _victoria_asks_or_ai(context)]
+    return [_split_ask(ask) for ask in _victoria_asks_or_ai(context)]
 
 
 def _victoria_asks_or_ai(context):
@@ -287,22 +308,33 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
     mapping_rows = _capability_mapping_rows(context)
     _set_cell(tables[4].cell(0, 0), "Buyer problem")
     _set_cell(tables[4].cell(0, 1), "Trifork capability mapping")
-    for row_index in range(1, len(tables[4].rows)):
-        problem, capability = mapping_rows[row_index - 1] if row_index <= len(mapping_rows) else (MISSING, MISSING)
+    for row_index in range(1, min(len(tables[4].rows), len(mapping_rows) + 1)):
+        problem, capability = mapping_rows[row_index - 1]
         _set_cell(tables[4].cell(row_index, 0), problem)
         _set_cell(tables[4].cell(row_index, 1), capability)
+    _trim_table_rows(tables[4], max(1, len(mapping_rows)))
 
-    risks = context["blockers_risks"] or [MISSING]
-    for row_index in range(1, len(tables[5].rows)):
-        value = risks[row_index - 1] if row_index <= len(risks) else MISSING
-        _set_cell(tables[5].cell(row_index, 0), f"Risk {row_index}")
-        _set_cell(tables[5].cell(row_index, 1), _item_text(value, ("blocker", "assessment")))
+    risks = context["blockers_risks"]
+    if risks:
+        for row_index in range(1, min(len(tables[5].rows), len(risks) + 1)):
+            blocker, assessment = _split_blocker(risks[row_index - 1])
+            _set_cell(tables[5].cell(row_index, 0), blocker)
+            _set_cell(tables[5].cell(row_index, 1), assessment)
+    else:
+        _set_cell(tables[5].cell(1, 0), "No blockers identified")
+        _set_cell(
+            tables[5].cell(1, 1),
+            "Phase 2 found no blocker against the three-item test (wrong type of work, "
+            "a named framework Trifork isn't a member of, or a closed window).",
+        )
+    _trim_table_rows(tables[5], max(1, len(risks)))
 
     asks = context["direct_asks"] or _victoria_asks(context)
-    for row_index in range(1, len(tables[6].rows)):
-        value = asks[row_index - 1] if row_index <= len(asks) else MISSING
-        _set_cell(tables[6].cell(row_index, 0), _item_text(value, ("ask", "why_it_matters")))
-        _set_cell(tables[6].cell(row_index, 1), "Decision required from Victoria")
+    for row_index in range(1, min(len(tables[6].rows), len(asks) + 1)):
+        ask_text, why_text = _split_ask(asks[row_index - 1])
+        _set_cell(tables[6].cell(row_index, 0), ask_text)
+        _set_cell(tables[6].cell(row_index, 1), why_text)
+    _trim_table_rows(tables[6], max(1, len(asks)))
 
     _set_cell(
         tables[7].cell(0, 0),
@@ -343,10 +375,11 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     _set_cell(tables[2].cell(0, 0), f"Submission deadline: {context['submission_deadline']} | {context['urgency']}")
 
     key_terms = _key_terms_rows(context) or [("None", "The notice is in plain English; no jargon requires explanation.")]
-    for row_index in range(1, len(tables[3].rows)):
-        term, meaning = key_terms[row_index - 1] if row_index <= len(key_terms) else ("", "")
+    for row_index in range(1, min(len(tables[3].rows), len(key_terms) + 1)):
+        term, meaning = key_terms[row_index - 1]
         _set_cell(tables[3].cell(row_index, 0), term)
         _set_cell(tables[3].cell(row_index, 1), meaning)
+    _trim_table_rows(tables[3], len(key_terms))
 
     info = (
         ("Contracting authority", context["buyer"]),
@@ -367,26 +400,29 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
             _set_cell(tables[4].cell(row_index, 1), value)
 
     milestones = _timetable_rows(context)
-    for row_index in range(1, len(tables[5].rows)):
-        field, value = milestones[row_index - 1] if row_index <= len(milestones) else (MISSING, MISSING)
+    for row_index in range(1, min(len(tables[5].rows), len(milestones) + 1)):
+        field, value = milestones[row_index - 1]
         _set_cell(tables[5].cell(row_index, 0), field)
         _set_cell(tables[5].cell(row_index, 1), value)
+    _trim_table_rows(tables[5], max(1, len(milestones)))
 
     _set_cell(tables[6].cell(1, 0), context["ai_read"]["capability_fit"])
     _set_cell(tables[6].cell(1, 1), context["ai_read"]["competitor_position"])
     _set_cell(tables[6].cell(1, 2), context["ai_read"]["right_to_win"])
 
     decision_rows = _decision_framework_rows(context)
-    for row_index in range(1, len(tables[7].rows)):
-        question, implication = decision_rows[row_index - 1] if row_index <= len(decision_rows) else (MISSING, MISSING)
+    for row_index in range(1, min(len(tables[7].rows), len(decision_rows) + 1)):
+        question, implication = decision_rows[row_index - 1]
         _set_cell(tables[7].cell(row_index, 0), question)
         _set_cell(tables[7].cell(row_index, 1), implication)
+    _trim_table_rows(tables[7], max(1, len(decision_rows)))
 
     action_rows = _immediate_action_rows(context)
-    for row_index in range(1, len(tables[8].rows)):
-        action, owner = action_rows[row_index - 1] if row_index <= len(action_rows) else (MISSING, MISSING)
+    for row_index in range(1, min(len(tables[8].rows), len(action_rows) + 1)):
+        action, owner = action_rows[row_index - 1]
         _set_cell(tables[8].cell(row_index, 0), action)
         _set_cell(tables[8].cell(row_index, 1), owner)
+    _trim_table_rows(tables[8], max(1, len(action_rows)))
 
     summary = (
         ("Opportunity", context["title"]), ("Buyer", context["buyer"]),
