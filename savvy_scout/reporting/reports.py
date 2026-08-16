@@ -240,22 +240,23 @@ def _summary_text(notice_row, phase2_row) -> str:
 def generate_weekly_report(
     conn: sqlite3.Connection, week_start: date, output_dir: str, owner: str | None = None
 ) -> str:
-    """New opportunities first identified in the 7 days starting week_start
-    (Monday) -- a short-form flag only, per the template. owner, if given
-    (e.g. "Mark"), restricts to that owner's sectors only (2026-08-15,
-    explicit request: Mark's reports should not include Kanvesh's Central
-    and Local Government notices). Filename: 'Trifork Scouting Weekly
-    Report YYYY-MM-DD.docx'."""
+    """Opportunities approved or rejected by their owner in the 7 days
+    starting week_start (Monday). owner, if given (e.g. "Mark"), restricts
+    the report to that owner's decisions. Filename: 'Trifork Scouting
+    Weekly Report YYYY-MM-DD.docx'."""
     week_end = week_start + timedelta(days=7)
     scope_where, scope_params = in_scope_filter_sql(conn)
     owner_clause = " AND owner = ?" if owner else ""
     owner_params = [owner] if owner else []
-    approval_where, approval_params = _post_approval_scope_sql()
     rows = conn.execute(
-        f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        f"AND ({scope_where}){owner_clause} AND {approval_where} "
+        f"SELECT * FROM notices WHERE ({scope_where}){owner_clause} AND EXISTS ("
+        f"SELECT 1 FROM status_history owner_decision "
+        f"WHERE owner_decision.notice_id = notices.id "
+        f"AND owner_decision.from_status = 'AWAITING_PHASE2_APPROVAL' "
+        f"AND owner_decision.to_status IN ('ESCALATED_TO_VICTORIA', 'REJECTED') "
+        f"AND owner_decision.changed_at >= ? AND owner_decision.changed_at < ?) "
         f"ORDER BY sector, buyer, title",
-        [week_start.isoformat(), week_end.isoformat()] + scope_params + owner_params + approval_params,
+        scope_params + owner_params + [week_start.isoformat(), week_end.isoformat()],
     ).fetchall()
 
     doc = Document()
@@ -264,14 +265,14 @@ def generate_weekly_report(
         "Weekly New Opportunities Summary",
         "Trifork Leadership Team",
         f"Week commencing: {week_start.strftime('%d %B %Y')}  |  Due: 16:00 each Monday",
-        "This summary lists new opportunities identified during the reporting week. "
+        "This summary lists opportunities approved or rejected by their owner during the reporting week. "
         "A full notice and briefing document (Internal Addendum) follows separately for any "
         "opportunity progressing to evaluation.",
     )
 
     if not rows:
         p = doc.add_paragraph()
-        p.add_run("No new opportunities were identified this week.").italic = True
+        p.add_run("No opportunities were approved or rejected by an owner this week.").italic = True
 
     for i, row in enumerate(rows, start=1):
         phase2 = _fetch_latest_phase2(conn, row["id"])

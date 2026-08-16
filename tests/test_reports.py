@@ -49,6 +49,15 @@ def _mark_once_reached_approval(conn, notice_id, to_status="AWAITING_PHASE2_APPR
     conn.commit()
 
 
+def _record_owner_decision(conn, notice_id, decision_status, changed_at):
+    conn.execute(
+        "INSERT INTO status_history (notice_id, from_status, to_status, changed_by, changed_at, reason) "
+        "VALUES (?, 'AWAITING_PHASE2_APPROVAL', ?, 'owner', ?, 'test owner decision')",
+        (notice_id, decision_status, changed_at),
+    )
+    conn.commit()
+
+
 def _all_paragraph_and_cell_text(doc: Document) -> str:
     parts = [p.text for p in doc.paragraphs]
     for table in doc.tables:
@@ -64,42 +73,52 @@ def test_most_recent_monday_returns_a_monday():
         assert most_recent_monday(d).weekday() == 0
 
 
-def test_weekly_report_includes_notice_published_in_window(conn, tmp_path):
+def test_weekly_report_uses_owner_decision_window_not_publication_window(conn, tmp_path):
     week_start = date(2026, 8, 10)
-    _insert_notice(
+    approved_id = _insert_notice(
         conn,
-        ref="REF-IN-WINDOW",
-        title="In-window opportunity",
+        ref="REF-OWNER-APPROVED",
+        title="Owner-approved opportunity",
         buyer="Some Trust",
-        first_published_at="2026-08-11T09:00:00+00:00",
-        status="AWAITING_PHASE2_APPROVAL",
-    )
-    _insert_notice(
-        conn,
-        ref="REF-OUT-OF-WINDOW",
-        title="Out-of-window opportunity",
         first_published_at="2026-08-01T09:00:00+00:00",
+        status="ESCALATED_TO_VICTORIA",
     )
+    _record_owner_decision(conn, approved_id, "ESCALATED_TO_VICTORIA", "2026-08-11T09:00:00+00:00")
+    rejected_id = _insert_notice(
+        conn,
+        ref="REF-OWNER-REJECTED",
+        title="Owner-rejected opportunity",
+        first_published_at="2026-08-02T09:00:00+00:00",
+        status="REJECTED",
+    )
+    _record_owner_decision(conn, rejected_id, "REJECTED", "2026-08-12T09:00:00+00:00")
+    old_decision_id = _insert_notice(
+        conn,
+        ref="REF-OLD-DECISION",
+        title="Previously decided opportunity",
+        first_published_at="2026-08-11T09:00:00+00:00",
+        status="ESCALATED_TO_VICTORIA",
+    )
+    _record_owner_decision(conn, old_decision_id, "ESCALATED_TO_VICTORIA", "2026-08-05T09:00:00+00:00")
 
     path = generate_weekly_report(conn, week_start, str(tmp_path))
     assert path.endswith("Trifork Scouting Weekly Report 2026-08-10.docx")
 
     text = _all_paragraph_and_cell_text(Document(path))
-    assert "In-window opportunity" in text
-    assert "Out-of-window opportunity" not in text
+    assert "Owner-approved opportunity" in text
+    assert "Owner-rejected opportunity" in text
+    assert "Previously decided opportunity" not in text
     assert "Some Trust" in text
-    assert "Owner to review Phase 2 read and confirm" in text
+    assert "Awaiting Victoria's go/no-go decision" in text
+    assert "No further action -- declined" in text
 
 
-def test_weekly_report_excludes_unapproved_phase2_scoped_notices(conn, tmp_path):
-    # 2026-08-15, explicit request: reports only cover opportunities
-    # already reviewed and approved past Phase 2 (or beyond) -- raw
-    # PHASE2_SCOPED material Mark hasn't looked at yet must not appear.
+def test_weekly_report_excludes_notices_still_awaiting_owner_review(conn, tmp_path):
     _insert_notice(
         conn,
         ref="REF-UNREVIEWED",
         title="Not yet reviewed opportunity",
-        status="PHASE2_SCOPED",
+        status="AWAITING_PHASE2_APPROVAL",
         first_published_at="2026-08-11T09:00:00+00:00",
     )
     path = generate_weekly_report(conn, date(2026, 8, 10), str(tmp_path))
@@ -108,16 +127,18 @@ def test_weekly_report_excludes_unapproved_phase2_scoped_notices(conn, tmp_path)
 
 
 def test_weekly_report_owner_filter_excludes_other_owners(conn, tmp_path):
-    _insert_notice(
+    mark_id = _insert_notice(
         conn, ref="REF-MARK", title="Mark's opportunity", owner="Mark",
         sector="Energy", cpv_primary="72212000",
-        first_published_at="2026-08-11T09:00:00+00:00",
+        first_published_at="2026-08-01T09:00:00+00:00", status="ESCALATED_TO_VICTORIA",
     )
-    _insert_notice(
+    kanvesh_id = _insert_notice(
         conn, ref="REF-KANVESH", title="Kanvesh's opportunity", owner="Kanvesh",
         sector="Central and Local Government", cpv_primary="72212000",
-        first_published_at="2026-08-11T09:00:00+00:00",
+        first_published_at="2026-08-01T09:00:00+00:00", status="ESCALATED_TO_VICTORIA",
     )
+    _record_owner_decision(conn, mark_id, "ESCALATED_TO_VICTORIA", "2026-08-11T09:00:00+00:00")
+    _record_owner_decision(conn, kanvesh_id, "ESCALATED_TO_VICTORIA", "2026-08-11T09:00:00+00:00")
     path = generate_weekly_report(conn, date(2026, 8, 10), str(tmp_path), owner="Mark")
     text = _all_paragraph_and_cell_text(Document(path))
     assert "Mark's opportunity" in text
@@ -142,7 +163,7 @@ def test_weekly_report_excludes_out_of_scope_notices(conn, tmp_path):
     path = generate_weekly_report(conn, date(2026, 8, 10), str(tmp_path))
     text = _all_paragraph_and_cell_text(Document(path))
     assert "Agriculture and Horticulture Development Board" not in text
-    assert "No new opportunities were identified this week." in text
+    assert "No opportunities were approved or rejected by an owner this week." in text
 
 
 def test_weekly_report_uses_phase2_reasoning_and_product_mapping(conn, tmp_path):
@@ -151,8 +172,9 @@ def test_weekly_report_uses_phase2_reasoning_and_product_mapping(conn, tmp_path)
         ref="REF-PHASE2",
         title="Clinical data platform build",
         first_published_at="2026-08-11T09:00:00+00:00",
-        status="AWAITING_PHASE2_APPROVAL",
+        status="ESCALATED_TO_VICTORIA",
     )
+    _record_owner_decision(conn, notice_id, "ESCALATED_TO_VICTORIA", "2026-08-11T09:00:00+00:00")
     conn.execute(
         "INSERT INTO phase2_assessments (notice_id, capability_fit_rating, capability_fit_reasoning, "
         "competitor_position_rating, competitor_position_reasoning, right_to_win_rating, "
