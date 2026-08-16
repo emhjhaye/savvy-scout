@@ -248,6 +248,42 @@ def _summary_text(notice_row, phase2_row) -> str:
     )
 
 
+def _value_to_float(value_text):
+    if not value_text:
+        return 0.0
+    tokens = re.findall(r"\d+\.?\d*", value_text)
+    if not tokens:
+        return 0.0
+    numbers = [float(token) for token in tokens]
+    return sum(numbers) / len(numbers)
+
+
+def _display_value(value_text) -> str:
+    value = _value_to_float(value_text)
+    return f"£{value:,.0f}" if value else "Not stated"
+
+
+def _owner_decision_target(conn, notice_id):
+    row = conn.execute(
+        "SELECT to_status FROM status_history WHERE notice_id = ? "
+        "AND from_status = 'AWAITING_PHASE2_APPROVAL' "
+        "AND to_status IN ('ESCALATED_TO_VICTORIA', 'REJECTED') "
+        "ORDER BY id DESC LIMIT 1",
+        (notice_id,),
+    ).fetchone()
+    return row["to_status"] if row else None
+
+
+def _current_awaiting_victoria(conn, scope_where, scope_params, owner=None):
+    owner_clause = " AND owner = ?" if owner else ""
+    params = list(scope_params) + ([owner] if owner else [])
+    return conn.execute(
+        f"SELECT * FROM notices WHERE status = 'ESCALATED_TO_VICTORIA' "
+        f"AND ({scope_where}){owner_clause} ORDER BY deadline IS NULL, deadline, title",
+        params,
+    ).fetchall()
+
+
 def generate_weekly_report(
     conn: sqlite3.Connection, week_start: date, output_dir: str, owner: str | None = None
 ) -> str:
@@ -281,6 +317,31 @@ def generate_weekly_report(
         "opportunity progressing to evaluation.",
     )
 
+    awaiting = _current_awaiting_victoria(conn, scope_where, scope_params, owner)
+    approved_count = sum(_owner_decision_target(conn, row["id"]) == "ESCALATED_TO_VICTORIA" for row in rows)
+    rejected_count = sum(_owner_decision_target(conn, row["id"]) == "REJECTED" for row in rows)
+    upcoming = [row for row in awaiting if row["deadline"] and row["deadline"][:10] >= date.today().isoformat()]
+    nearest = upcoming[0]["deadline"][:10] if upcoming else "No open deadline recorded"
+
+    snapshot_heading = doc.add_paragraph()
+    snapshot_heading.add_run("EXECUTIVE SNAPSHOT").bold = True
+    snapshot = doc.add_table(rows=1, cols=2)
+    snapshot.style = "Table Grid"
+    for index, header in enumerate(("METRIC", "POSITION")):
+        _shade_cell(snapshot.rows[0].cells[index], "AF1F23")
+        _set_cell_text(snapshot.rows[0].cells[index], header, bold=True, color=WHITE)
+    for metric, position in (
+        ("Owner decisions this week", str(len(rows))),
+        ("Advanced to Victoria", str(approved_count)),
+        ("Rejected after owner review", str(rejected_count)),
+        ("Currently awaiting Victoria", str(len(awaiting))),
+        ("Nearest open deadline", nearest),
+    ):
+        cells = snapshot.add_row().cells
+        _set_cell_text(cells[0], metric, bold=True)
+        _set_cell_text(cells[1], position)
+    doc.add_paragraph()
+
     if not rows:
         p = doc.add_paragraph()
         p.add_run("No opportunities were approved or rejected by an owner this week.").italic = True
@@ -303,7 +364,7 @@ def generate_weekly_report(
         _set_cell_text(detail.cell(0, 0), f"STAGE: {row['uk_stage']}", bold=True, size=9.5)
         _set_cell_text(
             detail.cell(0, 1),
-            f"CONTRACT VALUE: {row['indicative_value'] or 'Not stated'}", bold=True, size=9.5,
+            f"CONTRACT VALUE: {_display_value(row['indicative_value'])}", bold=True, size=9.5,
         )
         _set_cell_text(detail.cell(1, 0), f"TERM: {_term_text(row, gate5_reason)}", bold=True, size=9.5)
         _set_cell_text(
@@ -316,7 +377,13 @@ def generate_weekly_report(
 
         action_p = doc.add_paragraph()
         action_p.add_run("NEXT ACTION: ").bold = True
-        action_p.add_run(NEXT_ACTION_BY_STATUS.get(row["status"], "Review required"))
+        target = _owner_decision_target(conn, row["id"])
+        if target == "REJECTED":
+            action = "No further capture action; owner rejected after Phase 2 review."
+        else:
+            deadline = row["deadline"][:10] if row["deadline"] else "no published deadline"
+            action = f"Victoria to decide GO / NO-GO / Park; published deadline: {deadline}."
+        action_p.add_run(action)
 
         doc.add_paragraph()
 
@@ -330,11 +397,8 @@ def generate_weekly_report(
 def generate_monthly_report(
     conn: sqlite3.Connection, month_start: date, output_dir: str, owner: str | None = None
 ) -> str:
-    """Opportunities identified, decisions, bids in progress, and (as
-    placeholders -- see module docstring) bids submitted/upcoming events/AOB,
-    for the calendar month containing month_start. owner, if given, restricts
-    to that owner's sectors only (see generate_weekly_report's docstring).
-    Filename: 'Trifork Scouting Monthly Report YYYY-MM.docx'."""
+    """Victoria's GO / NO-GO / Park decisions during the calendar month,
+    plus the current pipeline awaiting her decision and upcoming deadlines."""
     if month_start.month == 12:
         month_end = date(month_start.year + 1, 1, 1)
     else:
@@ -343,12 +407,15 @@ def generate_monthly_report(
     scope_where, scope_params = in_scope_filter_sql(conn)
     owner_clause = " AND owner = ?" if owner else ""
     owner_params = [owner] if owner else []
-    approval_where, approval_params = _post_approval_scope_sql()
     rows = conn.execute(
-        f"SELECT * FROM notices WHERE first_published_at >= ? AND first_published_at < ? "
-        f"AND ({scope_where}){owner_clause} AND {approval_where} "
+        f"SELECT * FROM notices WHERE ({scope_where}){owner_clause} AND EXISTS ("
+        f"SELECT 1 FROM status_history victoria_decision "
+        f"WHERE victoria_decision.notice_id = notices.id "
+        f"AND victoria_decision.from_status = 'ESCALATED_TO_VICTORIA' "
+        f"AND victoria_decision.to_status IN ('APPROVED', 'REJECTED', 'PARKED') "
+        f"AND victoria_decision.changed_at >= ? AND victoria_decision.changed_at < ?) "
         f"ORDER BY sector, buyer, title",
-        [month_start.isoformat(), month_end.isoformat()] + scope_params + owner_params + approval_params,
+        scope_params + owner_params + [month_start.isoformat(), month_end.isoformat()],
     ).fetchall()
 
     doc = _document_from_template("monthly_report_template.docx")
@@ -357,31 +424,16 @@ def generate_monthly_report(
         "Monthly Opportunity Pipeline Report",
         "Trifork Leadership Team",
         f"Reporting period: {month_start.strftime('%B %Y')}",
-        "Prepared under the Bid Savvy Solutions Ltd monthly retainer, covering opportunity "
-        "identification and capture planning for the period stated above.",
+        "Executive record of Victoria's decisions, the live pipeline awaiting decision, "
+        "and the deadlines requiring attention.",
     )
 
-    # --- Section 1: opportunities identified this month, by sector -----
+    # --- Section 1: final decisions this month, by sector ----------------
     h1 = doc.add_paragraph()
-    h1.add_run("1. OPPORTUNITIES IDENTIFIED THIS MONTH").bold = True
+    h1.add_run("1. VICTORIA DECISIONS THIS MONTH").bold = True
     by_sector: dict[str, list] = {}
     for row in rows:
         by_sector.setdefault(row["sector"] or "Unclassified", []).append(row)
-
-    def _value_to_float(value_text):
-        # Regression (2026-08-15): indicative_value isn't always a single
-        # number -- OCDS ranges look like "GBP 1100000 to 1100000". Blindly
-        # concatenating every digit character (the old approach) mashed
-        # both numbers of a range into one, producing nonsense totals in
-        # the hundreds of billions. Extract each separate numeric token and
-        # average a two-number range instead.
-        if not value_text:
-            return 0.0
-        tokens = re.findall(r"\d+\.?\d*", value_text)
-        if not tokens:
-            return 0.0
-        numbers = [float(t) for t in tokens]
-        return sum(numbers) / len(numbers)
 
     t1 = doc.add_table(rows=1, cols=3)
     t1.style = "Table Grid"
@@ -403,7 +455,7 @@ def generate_monthly_report(
     _set_cell_text(r[2], f"£{total_v:,.0f}" if total_v else "Not stated", bold=True)
     doc.add_paragraph()
 
-    # --- Section 2: decisions and status --------------------------------
+    # --- Section 2: final decisions and rationale ------------------------
     h2 = doc.add_paragraph()
     h2.add_run("2. DECISIONS AND STATUS").bold = True
     t2 = doc.add_table(rows=1, cols=4)
@@ -412,49 +464,44 @@ def generate_monthly_report(
         _shade_cell(t2.rows[0].cells[idx], "AF1F23")
         _set_cell_text(t2.rows[0].cells[idx], header, bold=True, color=WHITE)
     for row in rows:
-        if row["status"] == "REJECTED":
-            gate_reason = (
-                _fetch_latest_gate_reason(conn, row["id"], "gate1")
-                or _fetch_latest_gate_reason(conn, row["id"], "gate2")
-                or "Declined at Phase 1/2 review"
-            )
-            gate4_reason = _fetch_latest_gate_reason(conn, row["id"], "gate4")
-            is_too_late = "passed" in (gate4_reason or "").lower() or "closed" in (gate4_reason or "").lower()
-            status_label = "Too Late" if is_too_late else "No Bid"
-            rationale = gate4_reason if is_too_late else gate_reason
-        elif row["status"] in IN_PROGRESS_STATUSES:
-            status_label = "In Progress"
-            rationale = NEXT_ACTION_BY_STATUS.get(row["status"], "")
-        else:
-            continue
+        decision = conn.execute(
+            "SELECT to_status, reason FROM status_history WHERE notice_id = ? "
+            "AND from_status = 'ESCALATED_TO_VICTORIA' "
+            "AND to_status IN ('APPROVED', 'REJECTED', 'PARKED') "
+            "AND changed_at >= ? AND changed_at < ? ORDER BY id DESC LIMIT 1",
+            (row["id"], month_start.isoformat(), month_end.isoformat()),
+        ).fetchone()
+        status_label = {"APPROVED": "GO", "REJECTED": "NO-GO", "PARKED": "Parked"}[decision["to_status"]]
+        phase2 = _fetch_latest_phase2(conn, row["id"])
+        rationale = decision["reason"] or (phase2["overall_reasoning"] if phase2 else "Decision recorded by Victoria")
         r = t2.add_row().cells
         _set_cell_text(r[0], row["buyer"] or "Not stated")
         _set_cell_text(r[1], row["title"])
         _set_cell_text(r[2], status_label, bold=True)
         _set_cell_text(r[3], (rationale or "")[:200])
+        _shade_cell(r[2], "D1FAE5" if status_label == "GO" else "FEE2E2" if status_label == "NO-GO" else "FEF3C7")
+    if not rows:
+        cells = t2.add_row().cells
+        _set_cell_text(cells[0], "No final decisions recorded this month")
+        for cell in cells[1:]:
+            _set_cell_text(cell, "—")
     doc.add_paragraph()
 
-    # --- Section 3: bids in progress -------------------------------------
+    # --- Section 3: live pipeline awaiting Victoria ----------------------
     h3 = doc.add_paragraph()
-    h3.add_run("3. BIDS IN PROGRESS").bold = True
+    h3.add_run("3. AWAITING VICTORIA DECISION").bold = True
     t3 = doc.add_table(rows=1, cols=4)
     t3.style = "Table Grid"
     for idx, header in enumerate(["CLIENT", "OPPORTUNITY TITLE", "STAGE", "VALUE"]):
         _shade_cell(t3.rows[0].cells[idx], "AF1F23")
         _set_cell_text(t3.rows[0].cells[idx], header, bold=True, color=WHITE)
-    in_progress_rows = [
-        r for r in rows
-        if r["status"] in {
-            "APPROVED", "CAPTURE_BRIEF_DRAFTED", "DOCS_DOWNLOADED", "CALENDARED", "ACTIVE",
-            "ESCALATED_TO_VICTORIA", "AWAITING_PHASE2_APPROVAL",
-        }
-    ]
+    in_progress_rows = _current_awaiting_victoria(conn, scope_where, scope_params, owner)
     for row in in_progress_rows:
         r = t3.add_row().cells
         _set_cell_text(r[0], row["buyer"] or "Not stated")
         _set_cell_text(r[1], row["title"])
-        _set_cell_text(r[2], row["uk_stage"])
-        _set_cell_text(r[3], row["indicative_value"] or "Not stated")
+        _set_cell_text(r[2], f"Awaiting decision | deadline {row['deadline'][:10] if row['deadline'] else 'not stated'}")
+        _set_cell_text(r[3], _display_value(row["indicative_value"]))
     if not in_progress_rows:
         r = t3.add_row().cells
         _set_cell_text(r[0], "None this period")
@@ -462,35 +509,50 @@ def generate_monthly_report(
             _set_cell_text(c, "")
     doc.add_paragraph()
 
-    # --- Section 4: bids submitted (placeholder -- not tracked) ---------
+    # --- Section 4: bids submitted ---------------------------------------
     h4 = doc.add_paragraph()
     h4.add_run("4. BIDS SUBMITTED").bold = True
     p4 = doc.add_paragraph()
     p4.add_run(
-        "Savvy Scout does not currently track a \"submitted to buyer\" milestone -- "
-        "please complete this section manually with any bids submitted this period."
+        "No verified submitted bids are recorded in Savvy Scout for this period."
     ).italic = True
     doc.add_paragraph()
 
-    # --- Section 5: upcoming events (placeholder) ------------------------
+    # --- Section 5: upcoming deadlines -----------------------------------
     h5 = doc.add_paragraph()
-    h5.add_run("5. UPCOMING EVENTS").bold = True
-    p5 = doc.add_paragraph()
-    p5.add_run("[Event Name] | [DD Month] | [Why this matters to Trifork]").italic = True
+    h5.add_run("5. UPCOMING DEADLINES").bold = True
+    future_rows = [
+        row for row in in_progress_rows
+        if row["deadline"] and row["deadline"][:10] >= date.today().isoformat()
+    ]
+    if future_rows:
+        t5 = doc.add_table(rows=1, cols=3)
+        t5.style = "Table Grid"
+        for index, header in enumerate(("OPPORTUNITY", "DEADLINE", "EXECUTIVE ACTION")):
+            _shade_cell(t5.rows[0].cells[index], "AF1F23")
+            _set_cell_text(t5.rows[0].cells[index], header, bold=True, color=WHITE)
+        for row in future_rows:
+            cells = t5.add_row().cells
+            _set_cell_text(cells[0], row["title"])
+            _set_cell_text(cells[1], row["deadline"][:10])
+            _set_cell_text(cells[2], "Victoria GO / NO-GO / Park decision required before deadline")
+    else:
+        p5 = doc.add_paragraph()
+        p5.add_run("No open deadlines are recorded for the current awaiting-decision pipeline.").italic = True
     doc.add_paragraph()
 
-    # --- Section 6: any other business (placeholder) ---------------------
+    # --- Section 6: matters requiring attention --------------------------
     h6 = doc.add_paragraph()
     h6.add_run("6. ANY OTHER BUSINESS").bold = True
     p6 = doc.add_paragraph()
-    p6.add_run(
-        "Matters for Trifork's attention that fall outside the sections above, for example "
-        "resourcing, risks, or strategic considerations."
-    )
+    p6.add_run("Executive matters requiring attention from the current pipeline.")
     b1 = doc.add_paragraph(style="List Bullet")
-    b1.add_run("[First matter for attention.]")
+    b1.add_run(f"{len(in_progress_rows)} opportunities are awaiting Victoria's final decision.")
     b2 = doc.add_paragraph(style="List Bullet")
-    b2.add_run("[Second matter for attention, if applicable.]")
+    b2.add_run(
+        f"{len(future_rows)} awaiting-decision opportunities have a future published deadline."
+        if future_rows else "No future published deadlines are currently recorded."
+    )
 
     doc.add_paragraph()
     footer = doc.add_paragraph()

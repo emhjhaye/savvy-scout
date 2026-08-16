@@ -58,6 +58,15 @@ def _record_owner_decision(conn, notice_id, decision_status, changed_at):
     conn.commit()
 
 
+def _record_victoria_decision(conn, notice_id, decision_status, changed_at, reason="Victoria decision"):
+    conn.execute(
+        "INSERT INTO status_history (notice_id, from_status, to_status, changed_by, changed_at, reason) "
+        "VALUES (?, 'ESCALATED_TO_VICTORIA', ?, 'Victoria', ?, ?)",
+        (notice_id, decision_status, changed_at, reason),
+    )
+    conn.commit()
+
+
 def _all_paragraph_and_cell_text(doc: Document) -> str:
     parts = [p.text for p in doc.paragraphs]
     for table in doc.tables:
@@ -109,8 +118,8 @@ def test_weekly_report_uses_owner_decision_window_not_publication_window(conn, t
     assert "Owner-rejected opportunity" in text
     assert "Previously decided opportunity" not in text
     assert "Some Trust" in text
-    assert "Awaiting Victoria's go/no-go decision" in text
-    assert "No further action -- declined" in text
+    assert "Victoria to decide GO / NO-GO / Park" in text
+    assert "No further capture action" in text
 
 
 def test_weekly_report_excludes_notices_still_awaiting_owner_review(conn, tmp_path):
@@ -199,11 +208,13 @@ def test_monthly_report_handles_value_ranges_without_mashing_digits(conn, tmp_pa
     # Regression (2026-08-15): "GBP 1100000 to 1100000" was being reduced to
     # a single blob of concatenated digits ("11000001100000" -> ~£11
     # trillion) instead of parsed as two numbers and averaged.
-    _insert_notice(
+    notice_id = _insert_notice(
         conn, ref="REF-RANGE", title="Ranged value opportunity",
         indicative_value="GBP 1100000 to 1100000",
         first_published_at="2026-08-05T09:00:00+00:00",
+        status="CAPTURE_BRIEF_DRAFTED",
     )
+    _record_victoria_decision(conn, notice_id, "APPROVED", "2026-08-05T10:00:00+00:00")
     path = generate_monthly_report(conn, date(2026, 8, 1), str(tmp_path))
     text = _all_paragraph_and_cell_text(Document(path))
     assert "£1,100,000" in text
@@ -213,17 +224,18 @@ def test_monthly_report_handles_value_ranges_without_mashing_digits(conn, tmp_pa
 
 def test_monthly_report_buckets_sectors_and_decisions(conn, tmp_path):
     month_start = date(2026, 8, 1)
-    _insert_notice(
+    approved_id = _insert_notice(
         conn, ref="REF-A", title="Council platform build", sector="Central and Local Government",
         indicative_value="GBP 100000", first_published_at="2026-08-05T09:00:00+00:00",
-        status="ESCALATED_TO_VICTORIA",
+        status="CAPTURE_BRIEF_DRAFTED",
     )
+    _record_victoria_decision(conn, approved_id, "APPROVED", "2026-08-05T10:00:00+00:00", "Proceed")
     rejected_id = _insert_notice(
         conn, ref="REF-B", title="NHS data platform", sector="NHS and Healthcare",
         indicative_value="GBP 50000", first_published_at="2026-08-06T09:00:00+00:00",
         status="REJECTED",
     )
-    _mark_once_reached_approval(conn, rejected_id)
+    _record_victoria_decision(conn, rejected_id, "REJECTED", "2026-08-06T10:00:00+00:00", "No strategic fit")
 
     path = generate_monthly_report(conn, month_start, str(tmp_path))
     assert path.endswith("Trifork Scouting Monthly Report 2026-08.docx")
@@ -232,10 +244,12 @@ def test_monthly_report_buckets_sectors_and_decisions(conn, tmp_path):
     assert "Central and Local Government" in text
     assert "NHS and Healthcare" in text
     assert "£150,000" in text  # TOTAL row
-    assert "In Progress" in text
-    assert "No Bid" in text
+    assert "GO" in text
+    assert "NO-GO" in text
     assert "BIDS SUBMITTED" in text
-    assert "does not currently track" in text
+    assert "No verified submitted bids" in text
+    assert "[Event Name]" not in text
+    assert "[First matter" not in text
 
 
 def test_monthly_report_excludes_notices_rejected_before_ever_reaching_approval(conn, tmp_path):
@@ -251,12 +265,14 @@ def test_monthly_report_excludes_notices_rejected_before_ever_reaching_approval(
     assert "Never reviewed opportunity" not in text
 
 
-def test_monthly_report_marks_passed_deadline_rejections_as_too_late(conn, tmp_path):
+def test_monthly_report_records_victoria_no_go_reason(conn, tmp_path):
     notice_id = _insert_notice(
         conn, ref="REF-LATE", title="Missed window opportunity",
         first_published_at="2026-08-05T09:00:00+00:00", status="REJECTED",
     )
-    _mark_once_reached_approval(conn, notice_id)
+    _record_victoria_decision(
+        conn, notice_id, "REJECTED", "2026-08-07T10:00:00+00:00", "Deadline passed before bid decision"
+    )
     conn.execute(
         "INSERT INTO triage_runs (notice_id, headline_gate, headline_outcome, headline_reason, evaluated_at) "
         "VALUES (?, 'gate4', 'FAIL', 'Closed or awarded (status: complete).', ?)",
@@ -272,4 +288,5 @@ def test_monthly_report_marks_passed_deadline_rejections_as_too_late(conn, tmp_p
 
     path = generate_monthly_report(conn, date(2026, 8, 1), str(tmp_path))
     text = _all_paragraph_and_cell_text(Document(path))
-    assert "Too Late" in text
+    assert "NO-GO" in text
+    assert "Deadline passed before bid decision" in text

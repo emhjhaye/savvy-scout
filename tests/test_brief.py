@@ -219,6 +219,49 @@ def test_word_capture_brief_has_exact_ten_sections(conn, tmp_path):
     assert "Smarter Bids. Real Results." in full_text
 
 
+def test_word_capture_brief_is_executive_and_has_live_notice_link(conn, tmp_path):
+    notice_id = _make_notice(conn)
+    path = build_capture_brief_docx(conn, notice_id, str(tmp_path / "briefs"))
+    document = Document(path)
+
+    banner_cell = document.tables[0].cell(0, 0)
+    assert len(banner_cell.paragraphs) == 1
+    assert banner_cell.paragraphs[0].paragraph_format.space_before.pt == 0
+    assert "Executive view:" in document.paragraphs[4].text
+
+    texts = [paragraph.text for paragraph in document.paragraphs]
+    scope_start = texts.index("5. SCOPE OF REQUIREMENT")
+    capability_start = texts.index("6. CAPABILITY AND FIT ASSESSMENT")
+    scope_content = [text for text in texts[scope_start + 1:capability_start] if text]
+    assert len(scope_content) >= 2
+    assert all(text != "—" for text in scope_content)
+
+    hyperlink_targets = {
+        relationship.target_ref
+        for relationship in document.part.rels.values()
+        if relationship.reltype == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+    }
+    assert "https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1" in hyperlink_targets
+    notice_link_cell = document.tables[4].cell(8, 1)
+    assert notice_link_cell._tc.xpath(".//w:hyperlink")
+
+
+def test_word_internal_addendum_asks_victoria_not_the_buyer(conn, tmp_path):
+    notice_id = _make_notice(conn)
+    path = build_internal_addendum_docx(conn, notice_id, str(tmp_path / "briefs"))
+    document = Document(path)
+    ask_text = "\n".join(cell.text for row in document.tables[6].rows[1:] for cell in row.cells)
+
+    assert "Does Victoria approve pursuing" in ask_text
+    assert "Decision required from Victoria" in ask_text
+    hyperlink_targets = {
+        relationship.target_ref
+        for relationship in document.part.rels.values()
+        if relationship.reltype == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+    }
+    assert "https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1" in hyperlink_targets
+
+
 def test_record_brief_inserts_row(conn, tmp_path):
     notice_id = _make_notice(conn)
     path = build_brief(conn, notice_id, output_dir=str(tmp_path / "briefs"))

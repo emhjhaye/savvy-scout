@@ -80,7 +80,7 @@ def cmd_sync_trifork_tracker(args: argparse.Namespace) -> None:
 def cmd_export_victoria_package(args: argparse.Namespace) -> None:
     settings = load_settings()
     conn = get_connection(settings.db_path)
-    result = export_victoria_package(conn, args.output_root)
+    result = export_victoria_package(conn, args.output_root, owner=args.owner)
     print(
         f"Victoria package exported to {args.output_root}: "
         f"{result['opportunities_with_artifacts']} opportunities, "
@@ -218,6 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate the complete local Victoria reports package",
     )
     victoria_parser.add_argument("--output-root", required=True)
+    victoria_parser.add_argument(
+        "--owner", default=None,
+        help="Restrict the package to one owner's sectors only (e.g. Mark). Omit for all owners.",
+    )
     victoria_parser.set_defaults(func=cmd_export_victoria_package)
 
     regression_parser = subparsers.add_parser(

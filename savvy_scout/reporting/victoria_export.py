@@ -17,8 +17,12 @@ from savvy_scout.logging_util import log_audit
 from savvy_scout.reporting.reports import generate_monthly_report, generate_weekly_report, most_recent_monday
 
 
-def _owner_escalated_notice_ids(conn: sqlite3.Connection) -> list[int]:
-    placeholders = ",".join("?" for _ in OWNER_NAMES)
+def _owner_escalated_notice_ids(conn: sqlite3.Connection, owner: str | None = None) -> list[int]:
+    # owner, if given, restricts the Addendum/Brief package to that owner's
+    # own escalations only -- explicit request (2026-08-16): Mark's package
+    # must not include Kanvesh's or Hammad's opportunities.
+    names = (owner,) if owner else OWNER_NAMES
+    placeholders = ",".join("?" for _ in names)
     rows = conn.execute(
         f"SELECT notice_id, MAX(id) AS latest_id FROM status_history "
         f"WHERE from_status = 'AWAITING_PHASE2_APPROVAL' "
@@ -26,7 +30,7 @@ def _owner_escalated_notice_ids(conn: sqlite3.Connection) -> list[int]:
         f"AND changed_by IN ({placeholders}) "
         f"AND EXISTS (SELECT 1 FROM phase2_assessments p WHERE p.notice_id = status_history.notice_id) "
         f"GROUP BY notice_id ORDER BY latest_id",
-        OWNER_NAMES,
+        names,
     ).fetchall()
     return [row["notice_id"] for row in rows]
 
@@ -48,8 +52,13 @@ def _move_generated(source_path: str, destination: Path) -> str:
 
 
 def export_victoria_package(
-    conn: sqlite3.Connection, output_root: str, reference_date: date | None = None
+    conn: sqlite3.Connection, output_root: str, reference_date: date | None = None,
+    owner: str | None = None,
 ) -> dict:
+    """owner, if given (e.g. "Mark"), scopes the whole package -- artifacts,
+    tracker, and both reports -- to that owner's own sectors only. Explicit
+    request (2026-08-16): Mark's package must never include Kanvesh's or
+    Hammad's opportunities."""
     root = Path(output_root)
     artifacts_root = root / "Addendum and Brief per Phase 2 Pass & Flag Opportunities"
     tracker_dir = root / "Pipeline Tracker"
@@ -59,7 +68,7 @@ def export_victoria_package(
         directory.mkdir(parents=True, exist_ok=True)
 
     artifact_count = 0
-    for index, notice_id in enumerate(_owner_escalated_notice_ids(conn), start=1):
+    for index, notice_id in enumerate(_owner_escalated_notice_ids(conn, owner), start=1):
         notice = conn.execute("SELECT ref, title FROM notices WHERE id = ?", (notice_id,)).fetchone()
         if not notice:
             continue
@@ -95,12 +104,12 @@ def export_victoria_package(
 
     today = reference_date or date.today()
     tracker = update_trifork_pipeline(
-        conn, str(tracker_dir / f"My_Trifork_Pipeline_Tracker - Updated {today.isoformat()}.xlsx")
+        conn, str(tracker_dir / f"My_Trifork_Pipeline_Tracker - Updated {today.isoformat()}.xlsx"), owner,
     )
     week_start = most_recent_monday(today)
-    weekly_path = generate_weekly_report(conn, week_start, str(weekly_dir))
+    weekly_path = generate_weekly_report(conn, week_start, str(weekly_dir), owner=owner)
     month_start = date(today.year, today.month, 1)
-    monthly_path = generate_monthly_report(conn, month_start, str(monthly_dir))
+    monthly_path = generate_monthly_report(conn, month_start, str(monthly_dir), owner=owner)
     return {
         "opportunities_with_artifacts": artifact_count // 3,
         "artifacts": artifact_count,

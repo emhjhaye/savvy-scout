@@ -1,6 +1,11 @@
+import re
 from pathlib import Path
 
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE
+from docx.shared import Pt
 
 from savvy_scout.escalation.context import MISSING, build_context
 
@@ -17,8 +22,10 @@ def _set_cell(cell, value):
     else:
         paragraph.add_run(text)
     for extra in cell.paragraphs[1:]:
-        for run in extra.runs:
-            run.text = ""
+        extra._element.getparent().remove(extra._element)
+    paragraph.paragraph_format.space_before = Pt(0)
+    paragraph.paragraph_format.space_after = Pt(0)
+    paragraph.paragraph_format.line_spacing = 1
 
 
 def _set_paragraph(paragraph, value):
@@ -31,11 +38,125 @@ def _set_paragraph(paragraph, value):
         paragraph.add_run(text)
 
 
+def _remove_paragraph(paragraph):
+    paragraph._element.getparent().remove(paragraph._element)
+
+
+def _set_hyperlink(cell, label, url):
+    _set_cell(cell, "")
+    paragraph = cell.paragraphs[0]
+    for child in list(paragraph._element):
+        paragraph._element.remove(child)
+    relationship_id = paragraph.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), relationship_id)
+    run = OxmlElement("w:r")
+    properties = OxmlElement("w:rPr")
+    colour = OxmlElement("w:color")
+    colour.set(qn("w:val"), "0563C1")
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    properties.extend((colour, underline))
+    text = OxmlElement("w:t")
+    text.text = label
+    run.extend((properties, text))
+    hyperlink.append(run)
+    paragraph._element.append(hyperlink)
+
+
 def _item_text(value, keys):
     if isinstance(value, dict):
         parts = [str(value[key]) for key in keys if value.get(key)]
         return " — ".join(parts) or MISSING
     return str(value or MISSING)
+
+
+def _sentence_case(value):
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    text = text[0].upper() + text[1:]
+    replacements = {"orr": "ORR", "uk": "UK", "it": "IT", "ai": "AI", "nhs": "NHS", "microsoft": "Microsoft", "trifork": "Trifork"}
+    for source, replacement in replacements.items():
+        text = re.sub(rf"\b{source}\b", replacement, text, flags=re.IGNORECASE)
+    return text
+
+
+def _first_sentences(value, count=1, limit=360):
+    text = " ".join(str(value or MISSING).split())
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    result = " ".join(sentences[:count])
+    if len(result) <= limit:
+        return result
+    return result[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…"
+
+
+def _scope_points(context):
+    title = " ".join(context["title"].casefold().split())
+    chunks = []
+    for line in str(context["notice_text"]).splitlines():
+        cleaned = " ".join(line.split()).strip(" .")
+        if not cleaned or cleaned.casefold() == title:
+            continue
+        if any(cleaned.casefold().startswith(prefix) for prefix in ("below threshold", "open procedure", "it services:")):
+            continue
+        chunks.extend(re.split(r"(?<=[.!?])\s+|;\s*", cleaned))
+    points = []
+    for chunk in chunks:
+        polished = _sentence_case(chunk.strip(" ."))
+        if len(polished) < 25 or polished.casefold() in {point.casefold() for point in points}:
+            continue
+        points.append(polished + ("" if polished.endswith((".", "?", "!")) else "."))
+        if len(points) == 7:
+            break
+    return points or ["Detailed scope is not stated in the published notice."]
+
+
+def _format_value(context):
+    if context["value_estimate"] == MISSING or str(context["value_estimate"]) in ("0", "0.0"):
+        return "Not stated"
+    try:
+        amount = float(context["value_estimate"])
+        formatted = f"{amount:,.0f}" if amount.is_integer() else f"{amount:,.2f}"
+    except (TypeError, ValueError):
+        return str(context["value_estimate"])
+    symbol = {"GBP": "£", "EUR": "€", "USD": "$"}.get(context["currency"])
+    return f"{symbol}{formatted}" if symbol else f"{formatted} {context['currency']}"
+
+
+def _recommended_action(context):
+    overall = context["ai_read"]["overall"]
+    if overall == "PURSUE":
+        return "Recommend GO to capture, subject to Victoria's approval and confirmation of the open risks."
+    if overall == "DECLINE":
+        return "Recommend NO-GO unless Victoria accepts the identified capability and right-to-win gaps."
+    return "Keep at FLAG pending Victoria's GO / NO-GO / Park decision on the identified capability and right-to-win gaps."
+
+
+def _victoria_asks(context):
+    rating = context["ai_read"]
+    asks = [
+        f"Does Victoria approve pursuing this opportunity with {rating['capability_fit']} capability fit and {rating['right_to_win']} right to win?",
+        f"Should the team accept or mitigate the principal capability gap: {_first_sentences(rating.get('per_field_reasoning', {}).get('capability_fit'), 1, 220)}",
+    ]
+    if context["submission_deadline"] != MISSING:
+        asks.append(f"If GO, should capture activity start now against the {context['submission_deadline']} deadline?")
+    asks.append("Should this proceed solo, with a delivery partner, or be parked pending stronger evidence?")
+    return asks
+
+
+def _executive_summary(context):
+    verb = "is seeking market input on" if context["uk_stage"] == "UK2" else "is procuring"
+    scope = _scope_points(context)
+    first = f"{context['buyer']} {verb} {context['title']}."
+    second = "Published scope: " + " ".join(scope[:3])
+    reasoning = context["ai_read"].get("per_field_reasoning", {})
+    third = (
+        f"Executive view: {context['ai_read']['overall']} (provisional). Capability fit is "
+        f"{context['ai_read']['capability_fit']} and right to win is {context['ai_read']['right_to_win']}. "
+        f"{_first_sentences(reasoning.get('overall'), 2, 420)}"
+    )
+    return first, second, third
 
 
 def _save(document, output_dir, filename):
@@ -88,7 +209,10 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
     )
     for row_index, (field, value) in enumerate(metadata, start=1):
         _set_cell(tables[3].cell(row_index, 0), field)
-        _set_cell(tables[3].cell(row_index, 1), value)
+        if field == "Notice link" and context["notice_url"] != MISSING:
+            _set_hyperlink(tables[3].cell(row_index, 1), "Open published notice", context["notice_url"])
+        else:
+            _set_cell(tables[3].cell(row_index, 1), value)
 
     reasoning = context["ai_read"].get("per_field_reasoning", {})
     capabilities = (
@@ -110,7 +234,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         _set_cell(tables[5].cell(row_index, 0), f"Risk {row_index}")
         _set_cell(tables[5].cell(row_index, 1), _item_text(value, ("blocker", "assessment")))
 
-    asks = context["direct_asks"] or context["ai_read"].get("open_questions", []) or [MISSING]
+    asks = _victoria_asks(context)
     for row_index in range(1, len(tables[6].rows)):
         value = asks[row_index - 1] if row_index <= len(asks) else MISSING
         _set_cell(tables[6].cell(row_index, 0), _item_text(value, ("ask", "why_it_matters")))
@@ -120,7 +244,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         tables[7].cell(0, 0),
         f"Decision required: GO, NO-GO or Park for {context['title']} "
         f"(ref {context['notice_reference']}). Owner recommendation: "
-        f"{context['recommended_next_action']} — {context['owner_name']}.",
+        f"{_recommended_action(context)} — {context['owner_name']}.",
     )
     _set_paragraph(
         document.paragraphs[-1],
@@ -146,8 +270,8 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     )
     _set_cell(
         tables[1].cell(0, 0),
-        f"Why this matters: {context['ai_read'].get('per_field_reasoning', {}).get('overall', MISSING)} "
-        "PROVISIONAL — FOR VALIDATION.",
+        f"Why this matters: {_first_sentences(context['ai_read'].get('per_field_reasoning', {}).get('capability_fit'), 2, 420)} "
+        f"Decision point: {_recommended_action(context)} PROVISIONAL — FOR VALIDATION.",
     )
     _set_cell(tables[2].cell(0, 0), f"Submission deadline: {context['submission_deadline']} | {context['urgency']}")
 
@@ -168,14 +292,17 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         ("Source", context["source_portal"]),
         ("Sector", context["sector"]),
         ("Framework status", context["framework_status"]),
-        ("Estimated contract value", f"{context['value_estimate']} {context['currency']}"),
+        ("Estimated contract value", _format_value(context)),
         ("Main CPV codes", ", ".join(context["cpv_codes"]) or MISSING),
-        ("Notice link", context["notice_url"]),
+        ("Notice link", "Open published notice"),
         ("Owner", context["owner_name"]),
     )
     for row_index, (field, value) in enumerate(info, start=1):
         _set_cell(tables[4].cell(row_index, 0), field)
-        _set_cell(tables[4].cell(row_index, 1), value)
+        if field == "Notice link" and context["notice_url"] != MISSING:
+            _set_hyperlink(tables[4].cell(row_index, 1), value, context["notice_url"])
+        else:
+            _set_cell(tables[4].cell(row_index, 1), value)
 
     milestones = (
         ("Notice published", context["published_date"]),
@@ -190,13 +317,13 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     _set_cell(tables[6].cell(1, 1), context["ai_read"]["competitor_position"])
     _set_cell(tables[6].cell(1, 2), context["ai_read"]["right_to_win"])
 
-    questions = context["ai_read"].get("open_questions", []) or [MISSING]
+    questions = _victoria_asks(context)
     for row_index in range(1, len(tables[7].rows)):
         question = questions[row_index - 1] if row_index <= len(questions) else MISSING
         _set_cell(tables[7].cell(row_index, 0), question)
         _set_cell(tables[7].cell(row_index, 1), "Requires validation before decision")
 
-    actions = context["direct_asks"] or [context["recommended_next_action"]]
+    actions = [_recommended_action(context)]
     for row_index in range(1, len(tables[8].rows)):
         action = actions[row_index - 1] if row_index <= len(actions) else MISSING
         _set_cell(tables[8].cell(row_index, 0), _item_text(action, ("ask", "why_it_matters")))
@@ -205,26 +332,28 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     summary = (
         ("Opportunity", context["title"]), ("Buyer", context["buyer"]),
         ("Reference", context["notice_reference"]),
-        ("Estimated value", f"{context['value_estimate']} {context['currency']}"),
+        ("Estimated value", _format_value(context)),
         ("Route to market", context["route_to_market"]),
         ("Capability fit", context["ai_read"]["capability_fit"]),
         ("Competitive risk", context["ai_read"]["competitor_position"]),
         ("Right to win", context["ai_read"]["right_to_win"]),
-        ("Recommended action", context["recommended_next_action"]),
+        ("Recommended action", _recommended_action(context)),
         ("Next deadline", context["submission_deadline"]),
-        ("Sources", f"{context['source_portal']} | {context['notice_url']}"),
+        ("Sources", context["source_portal"]),
     )
     for row_index, (field, value) in enumerate(summary, start=1):
         _set_cell(tables[9].cell(row_index, 0), field)
         _set_cell(tables[9].cell(row_index, 1), value)
 
+    executive = _executive_summary(context)
+    scope_points = _scope_points(context)
     replacements = {
-        2: context["notice_text"],
-        3: context["ai_read"].get("per_field_reasoning", {}).get("overall", MISSING),
-        4: "PROVISIONAL — FOR VALIDATION. Owner-reviewed opportunity prepared for Victoria's decision.",
-        14: context["notice_text"],
+        2: executive[0],
+        3: executive[1],
+        4: executive[2] + " PROVISIONAL — FOR VALIDATION.",
+        14: "The published notice describes the following scope:",
         23: "What the buyer is seeking from this engagement",
-        24: context["route_to_market"],
+        24: context["route_to_market"] if context["route_to_market"] != MISSING else "Route to market not stated in the notice.",
         25: "Engagement model",
         26: context["stage"],
         30: f"Capability fit: {context['ai_read']['capability_fit']}",
@@ -233,7 +362,7 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         37: context["ai_read"].get("per_field_reasoning", {}).get("competitor_position", MISSING),
         38: f"Right to win: {context['ai_read']['right_to_win']}",
         39: context["ai_read"].get("per_field_reasoning", {}).get("right_to_win", MISSING),
-        46: context["recommended_next_action"],
+        46: _recommended_action(context),
         47: f"Prepared for Victoria's GO / NO-GO / Park decision by {context['owner_name']}.",
         51: f"Prepared by {context['owner_name']}, Bid Savvy Solutions Ltd",
         52: "Confidential | Not for circulation beyond Trifork UK",
@@ -241,14 +370,16 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     for index, value in replacements.items():
         if index < len(paragraphs):
             _set_paragraph(paragraphs[index], value)
-    for index in range(15, 23):
-        if index < len(paragraphs):
-            _set_paragraph(paragraphs[index], MISSING)
-    for index in range(32, 36):
-        if index < len(paragraphs):
-            _set_paragraph(paragraphs[index], MISSING)
+    scope_paragraphs = paragraphs[15:23]
+    for index, paragraph in enumerate(scope_paragraphs):
+        if index < len(scope_points):
+            _set_paragraph(paragraph, scope_points[index])
+        else:
+            _remove_paragraph(paragraph)
+    for paragraph in paragraphs[32:36]:
+        _remove_paragraph(paragraph)
 
-            _set_footer(document, context)
+    _set_footer(document, context)
 
     safe_ref = context["notice_reference"].replace("/", "-")
     return _save(document, output_dir, f"{safe_ref}_capture_brief.docx")

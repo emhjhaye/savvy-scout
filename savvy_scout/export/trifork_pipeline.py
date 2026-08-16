@@ -23,8 +23,12 @@ HEADERS = (
 )
 
 
-def _owner_reviewed_notice_ids(conn: sqlite3.Connection) -> list[int]:
-    placeholders = ",".join("?" for _ in OWNER_NAMES)
+def _owner_reviewed_notice_ids(conn: sqlite3.Connection, owner: str | None = None) -> list[int]:
+    # owner, if given (e.g. "Mark"), restricts to that owner's own decisions
+    # only -- explicit request (2026-08-16): Mark's tracker export must not
+    # include Kanvesh's or Hammad's escalations/rejections.
+    names = (owner,) if owner else OWNER_NAMES
+    placeholders = ",".join("?" for _ in names)
     rows = conn.execute(
         f"SELECT notice_id, MAX(id) latest_id FROM status_history "
         f"WHERE from_status = 'AWAITING_PHASE2_APPROVAL' "
@@ -32,7 +36,7 @@ def _owner_reviewed_notice_ids(conn: sqlite3.Connection) -> list[int]:
         f"AND changed_by IN ({placeholders}) "
         f"AND EXISTS (SELECT 1 FROM phase2_assessments p WHERE p.notice_id = status_history.notice_id) "
         f"GROUP BY notice_id ORDER BY latest_id",
-        OWNER_NAMES,
+        names,
     ).fetchall()
     return [row["notice_id"] for row in rows]
 
@@ -270,7 +274,9 @@ def _template_or_existing(output: Path):
     return load_workbook(TEMPLATE_PATH), True
 
 
-def update_trifork_pipeline(conn: sqlite3.Connection, output_path: str) -> dict[str, int | str]:
+def update_trifork_pipeline(
+    conn: sqlite3.Connection, output_path: str, owner: str | None = None
+) -> dict[str, int | str]:
     output = Path(output_path)
     workbook, fresh = _template_or_existing(output)
     styles = _snapshot_styles(workbook)
@@ -286,7 +292,7 @@ def update_trifork_pipeline(conn: sqlite3.Connection, output_path: str) -> dict[
                 existing[str(reference)] = (sheet_name, row)
 
     inserted = updated = skipped = 0
-    for notice_id in _owner_reviewed_notice_ids(conn):
+    for notice_id in _owner_reviewed_notice_ids(conn, owner):
         context = build_context(conn, notice_id)
         if any(context[key] == MISSING for key in ("notice_reference", "title", "buyer", "sector", "owner_name")):
             skipped += 1
@@ -340,4 +346,5 @@ def update_trifork_pipeline(conn: sqlite3.Connection, output_path: str) -> dict[
 
 def update_configured_trifork_pipeline(conn: sqlite3.Connection):
     output_path = os.environ.get("TRIFORK_PIPELINE_OUTPUT_PATH")
-    return update_trifork_pipeline(conn, output_path) if output_path else None
+    owner = os.environ.get("TRIFORK_PIPELINE_OWNER") or None
+    return update_trifork_pipeline(conn, output_path, owner) if output_path else None
