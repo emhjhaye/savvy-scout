@@ -363,7 +363,7 @@
         {% if phase2_assessment %}
         <div class="cb-body">Overall: {{ phase2_assessment['overall_rating'] }} — {{ phase2_assessment['overall_reasoning'] }}</div>
         {% else %}
-        <div class="cb-body cb-muted">Not yet assessed — awaiting Phase 2 scope read or manual advance.</div>
+        <div class="cb-body cb-muted">Not yet assessed — awaiting the Phase 2 AI scope read.</div>
         {% endif %}
       </div>
     </div>
@@ -476,19 +476,6 @@
     <div style="font-size: 11px; color: var(--text-muted); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
       Model: {{ phase2_assessment['model_used'] }} · Generated {{ phase2_assessment['created_at'][:16] | replace('T', ' ') }} UTC
     </div>
-  </div>
-</div>
-{% endif %}
-
-{# ---- Full Notice Text ---- #}
-{% if notice['text_blob'] %}
-<div class="card">
-  <div class="card-header">
-    <h2>Notice Text</h2>
-    <span style="font-size: 12px; color: var(--text-muted);">Source: {{ notice['source'] }}</span>
-  </div>
-  <div class="card-body">
-    <pre style="white-space: pre-wrap; font-size: 12px; font-family: monospace; color: var(--text); background: var(--surface-alt); padding: 16px; border-radius: 8px; overflow-x: auto; max-height: 400px; overflow-y: auto;">{{ notice['text_blob'] }}</pre>
   </div>
 </div>
 {% endif %}

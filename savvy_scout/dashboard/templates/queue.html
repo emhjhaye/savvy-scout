@@ -22,6 +22,7 @@
     margin-bottom: 12px; padding: 0 4px;
   }
   .queue-header h2 { font-size: 17px; font-weight: 700; color: var(--navy); display: flex; align-items: center; gap: 10px; }
+  .queue-heading p { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
   summary.queue-header::-webkit-details-marker { display: none; }
   summary.queue-header::marker { content: ""; }
   summary.queue-header h2::before { content: "▸"; font-size: 13px; color: var(--text-muted); transition: transform 0.15s; }
@@ -108,12 +109,12 @@
 {% if phase2_pending_count and phase2_pending_count > 0 %}
 <div class="phase2-banner">
   <div>
-    <strong>{{ phase2_pending_count }} notice{% if phase2_pending_count != 1 %}s{% endif %} are waiting for Phase 2 scope reads.</strong>
+    <strong>{{ phase2_pending_count }} notice{% if phase2_pending_count != 1 %}s{% endif %} need a Phase 2 AI scope read.</strong>
     <div style="font-size: 12px; color: var(--text-muted);">
       {% if phase2_ready %}
-        Run the AI scope read before reviewing the Phase 2 queue.
+        Run the AI analysis to move them into your review queue.
       {% else %}
-        Set {{ scope_read_key_name }} in .env to run AI reads.
+        Phase 2 AI is not configured. Ask an administrator to enable it.
       {% endif %}
     </div>
   </div>
@@ -123,7 +124,7 @@
         <button type="submit" class="btn btn-secondary btn-sm">Process Phase 2</button>
       </form>
     {% else %}
-      <button type="button" class="btn btn-secondary btn-sm" disabled>Process Phase 2</button>
+      <button type="button" class="btn btn-secondary btn-sm" disabled>AI Read Unavailable</button>
     {% endif %}
   </div>
 </div>
@@ -135,7 +136,10 @@
 {% if not current_user.is_victoria %}
 <details class="queue-section">
   <summary class="queue-header" style="cursor: pointer; list-style: none;">
-    <h2>📋 To Review / Handoff — Phase 1 (gate fails, double-check) {% if phase1_rows %}<span class="count">{{ phase1_rows | length }}</span>{% endif %}</h2>
+    <div class="queue-heading">
+      <h2>📋 Phase 1 — Gate Review {% if phase1_rows %}<span class="count">{{ phase1_rows | length }}</span>{% endif %}</h2>
+      <p>Double-check notices that failed a deterministic gate. Overturn to Pass or Reject.</p>
+    </div>
   </summary>
 
   {% if phase1_rows %}
@@ -198,7 +202,10 @@
 {% if not current_user.is_victoria %}
 <div class="queue-section">
   <div class="queue-header">
-    <h2>🔍 Phase 2 — AI Scope Read Review {% if phase2_rows %}<span class="count phase2-count">{{ phase2_rows | length }}</span>{% endif %}</h2>
+    <div class="queue-heading">
+      <h2>🔍 Phase 2 — AI Scope Read Review {% if phase2_rows %}<span class="count phase2-count">{{ phase2_rows | length }}</span>{% endif %}</h2>
+      <p>Validate the AI assessment against the notice. Approve sends it to Victoria; Reject closes it.</p>
+    </div>
   </div>
 
   {% if phase2_rows %}
@@ -261,7 +268,10 @@
 {% if current_user.is_victoria %}
 <div class="queue-section">
   <div class="queue-header">
-    <h2>⬆ Escalated — Victoria's Decision {% if escalated_rows %}<span class="count victoria-count">{{ escalated_rows | length }}</span>{% endif %}</h2>
+    <div class="queue-heading">
+      <h2>⬆ Final Review — Victoria's Decision {% if escalated_rows %}<span class="count victoria-count">{{ escalated_rows | length }}</span>{% endif %}</h2>
+      <p>Owner-approved notices awaiting the final bid decision.</p>
+    </div>
   </div>
   {% if escalated_rows %}
     {% for n in escalated_rows %}

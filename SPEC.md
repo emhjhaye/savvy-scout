@@ -56,19 +56,9 @@ records where the actual build has since deviated or moved on, and why, so it do
   notices reach `PHASE2_SCOPED` and wait there rather than advancing to `AWAITING_PHASE2_APPROVAL`.
 - **Manual Phase 2 advance without an AI scope read (2026-07-21)**: with no `ANTHROPIC_API_KEY`
   configured, 2,123 notices had accumulated in `PHASE2_SCOPED`, permanently stuck waiting for a
-  scope read that never runs. Decided with the team: the extracted notice fields added earlier the
-  same day (supplier, buyer address/contact/region, CPV description, procurement method/details --
-  see the Procurement Details card on the notice detail page) already give an owner enough to review
-  at Phase 2, so this no longer needs to wait on the AI read. Added
-  `advance_phase2_without_scope_read` / `advance_pending_phase2_without_scope_read`
-  (`workflow/approvals.py`) to move a notice straight from `PHASE2_SCOPED` to
-  `AWAITING_PHASE2_APPROVAL` without calling Claude; exposed as a "Proceed without AI read" button
-  on the queue page banner (bulk) and on an individual notice's detail page. No `phase2_assessments`
-  row is created for these, so the Phase 2 queue simply shows no AI rating for them, which correctly
-  reflects "no AI read was done" rather than a data gap. `process_pending_phase2_scope_reads` (the
-  AI path) is untouched and still runs wherever a key is configured; this is an alternative route
-  through the same state, not a replacement for B2. The existing 2,123-notice backlog was cleared
-  with this once, on 2026-07-21.
+  scope read that never runs. The extracted notice fields give an owner enough to review at Phase 2,
+  so the backend retains manual single and bulk advance routes. The queue no longer exposes the bulk
+  "Proceed without AI read" button; the normal visible action remains "Process Phase 2".
 
 ## What this is
 An automated UK procurement workflow engine with human approval gates. It sweeps official tender sources daily, triages every notice against the Bid Savvy gate model, routes results through owner approvals, escalates Victoria-decision items to her with an auto-drafted brief, and on approval downloads public documents, pushes deadlines to Outlook calendars, and chases follow-ups internally. Humans decide; the machine prepares.

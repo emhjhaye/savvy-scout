@@ -91,7 +91,7 @@ def _build_pipeline_stages(notice, triage_run, phase2_assessment, escalation_bri
         stages.append({"label": "Phase 2 AI Scope Read", "state": "current", "detail": "Awaiting scope read"})
     elif "PHASE2_SCOPED" in ever_reached:
         stages.append({"label": "Phase 2 AI Scope Read", "state": "skipped",
-                        "detail": "Manually advanced without an AI read"})
+                        "detail": "Legacy item — no AI assessment recorded"})
     else:
         stages.append({"label": "Phase 2 AI Scope Read", "state": "pending", "detail": ""})
 
@@ -116,7 +116,7 @@ def _build_pipeline_stages(notice, triage_run, phase2_assessment, escalation_bri
     return stages
 
 
-def _process_pending_phase2(conn, owner: str | None):
+def _process_pending_phase2(conn, owner: str | None) -> int:
     """Process notices in PHASE2_SCOPED status: run scope read and move to
     AWAITING_PHASE2_APPROVAL. Silently skips if the configured provider's key
     is not available. owner=None (Victoria) processes the whole pipeline;
@@ -126,10 +126,12 @@ def _process_pending_phase2(conn, owner: str | None):
     try:
         settings = current_app.config["SAVVY_SCOUT_SETTINGS"]
         client, scope_read_fn = get_scope_read_client(settings)
-        approvals.process_pending_phase2_scope_reads(conn, client, scope_read_fn=scope_read_fn, owner=owner)
+        return approvals.process_pending_phase2_scope_reads(
+            conn, client, scope_read_fn=scope_read_fn, owner=owner
+        )
     except Exception as e:
-        current_app.logger.debug(f"Phase 2 processing skipped (API key not configured?): {e}")
-        # Don't fail the queue page if Phase 2 can't run
+        current_app.logger.warning("Phase 2 AI processing failed: %s", e)
+        return 0
 
 
 @queues_bp.route("/notices/add-manual", methods=["GET", "POST"])
@@ -291,8 +293,12 @@ def process_phase2():
         key_name = "OPENAI_API_KEY" if settings.scope_read_provider == "openai" else "ANTHROPIC_API_KEY"
         flash(f"Set {key_name} in .env to run Phase 2 scope reads.", "error")
         return redirect(url_for("queues.index"))
-    _process_pending_phase2(conn, None if current_user.is_victoria else current_user.display_name)
-    flash("Phase 2 scope reads processed.")
+    owner = None if current_user.is_victoria else current_user.display_name
+    processed = _process_pending_phase2(conn, owner)
+    if processed:
+        flash(f"Completed {processed} Phase 2 AI scope read{'s' if processed != 1 else ''}.")
+    else:
+        flash("No Phase 2 AI scope reads completed. Check the AI provider configuration and try again.", "error")
     return redirect(url_for("queues.index"))
 
 
