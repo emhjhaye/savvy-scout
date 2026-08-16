@@ -361,11 +361,13 @@ def update_trifork_pipeline(
                 if link:
                     cell.value = "Open Internal Addendum"
                     cell.hyperlink = link
+                    cell.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
             if column == 21:  # CAPTURE BRIEF
                 link = _brief_link(conn, notice_id, "CAPTURE_BRIEF", output.parent)
                 if link:
                     cell.value = "Open Capture Brief"
                     cell.hyperlink = link
+                    cell.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
         sheet.row_dimensions[row_number].height = 105
         existing[reference] = (target_name, row_number)
 

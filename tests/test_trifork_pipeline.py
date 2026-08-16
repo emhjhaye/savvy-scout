@@ -81,6 +81,11 @@ def test_tracker_links_to_recorded_addendum_and_brief(conn, tmp_path):
     assert addendum_cell.value == "Open Internal Addendum"
     assert addendum_cell.hyperlink is not None
     assert "Internal_Addendum.docx" in addendum_cell.hyperlink.target
+    # Regression (2026-08-16): the hyperlink was set but never visually
+    # styled as a link (still plain black, no underline), so it looked like
+    # inert text in Excel even though it was clickable.
+    assert addendum_cell.font.color.rgb in ("000563C1", "FF0563C1", "0563C1")
+    assert addendum_cell.font.underline == "single"
     capture_cell = sheet.cell(3, 21)
     assert capture_cell.value == "Not yet generated"
 
