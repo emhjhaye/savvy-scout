@@ -353,7 +353,10 @@ CREATE TABLE IF NOT EXISTS phase2_assessments (
     engagement_model TEXT,
     procurement_timetable TEXT,
     decision_framework TEXT,
-    solo_or_partner_recommendation TEXT
+    solo_or_partner_recommendation TEXT,
+    -- MED capability_fit's dual reading (2026-08-19, house style spec):
+    -- {build_signals: [str], product_signals: [str], honest_position: str}.
+    med_dual_reading TEXT
 );
 
 -- Phase B: escalation briefs (B3). One row per auto-generated brief.

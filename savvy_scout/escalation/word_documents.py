@@ -6,14 +6,112 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.shared import Pt
+from docx.text.paragraph import Paragraph
 
 from savvy_scout.escalation.context import MISSING, build_context
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "artifacts"
 
+# House style (2026-08-19 spec): exact hex values for rating text and
+# callout fills/borders.
+_RATING_COLORS = {
+    "HIGH": "2F5D8A",
+    "MED": "3A3A3A",
+    "MEDIUM": "3A3A3A",
+    "LOW": "AF0000",
+    "UNKNOWN": "3A3A3A",
+    "N/A": "3A3A3A",
+}
+_CALLOUT_BLUE = {"fill": "EEF3FA", "border": "2F5D8A"}
+_CALLOUT_RED = {"fill": "FDF0F0", "border": "AF0000"}
+
+
+def _rating_color(rating):
+    return _RATING_COLORS.get(str(rating).upper(), "3A3A3A")
+
+
+def _color_rating_run(paragraph, rating):
+    """Colours the LAST run of a paragraph per house style's rating colour
+    table, for cells whose whole text is a rating (or ends with one, e.g.
+    "Capability fit: MED")."""
+    if not paragraph.runs:
+        return
+    run = paragraph.runs[-1]
+    run.font.color.rgb = None
+    from docx.shared import RGBColor
+
+    run.font.color.rgb = RGBColor.from_string(_rating_color(rating))
+    run.font.bold = True
+
+
+def _shade_cell(cell, fill, border):
+    """Applies a callout fill + single-line border on all four sides,
+    matching the house style spec's blue ("why this matters") and red
+    (deadline/confidentiality) callouts."""
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), fill)
+    tc_pr.append(shd)
+    borders = OxmlElement("w:tcBorders")
+    for side in ("top", "left", "bottom", "right"):
+        edge = OxmlElement(f"w:{side}")
+        edge.set(qn("w:val"), "single")
+        edge.set(qn("w:sz"), "4")
+        edge.set(qn("w:color"), border)
+        borders.append(edge)
+    tc_pr.append(borders)
+
+# House style (2026-08-19 spec): only these four verified case studies exist.
+# Names used in error before and corrected -- must never appear again even
+# if the AI slips, so this is enforced here as a defensive check, not just
+# an instruction to the model.
+_BANNED_CASE_STUDIES = ("vocalink", "visa", "danske bank")
+
+
+def _strip_banned_names(text):
+    if not isinstance(text, str):
+        return text
+    lowered = text.casefold()
+    if any(banned in lowered for banned in _BANNED_CASE_STUDIES):
+        return "UNVERIFIED, the model referenced an unverified case study, removed here."
+    return text
+
+
+def _house_style(text):
+    """Never-invented content still needs to honour house style even if the
+    model slips: no em/en dash. Skips the bare MISSING sentinel itself
+    ("—"), which is an em dash used throughout the app as the "no data"
+    placeholder, not house-style prose."""
+    if not isinstance(text, str) or text == MISSING:
+        return text
+    text = _strip_banned_names(text)
+    return text.replace("—", ",").replace("–", ",")
+
+
+# House style (2026-08-19 spec) names Inter as the document font. python-docx
+# can only write the font NAME into the file; it cannot embed the font or
+# guarantee it renders that way. Whether it actually displays as Inter
+# depends entirely on Inter being installed on whichever computer opens the
+# .docx in Word -- if it isn't, Word silently substitutes its own fallback
+# and there is no way to control that from the generating side.
+_HOUSE_FONT = "Inter"
+
+
+def _apply_font(paragraph):
+    for run in paragraph.runs:
+        run.font.name = _HOUSE_FONT
+        r_pr = run._element.get_or_add_rPr()
+        r_fonts = r_pr.find(qn("w:rFonts"))
+        if r_fonts is None:
+            r_fonts = OxmlElement("w:rFonts")
+            r_pr.append(r_fonts)
+        for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+            r_fonts.set(qn(attr), _HOUSE_FONT)
+
 
 def _set_cell(cell, value):
-    text = str(value if value not in (None, "") else MISSING)
+    text = _house_style(str(value if value not in (None, "") else MISSING))
     paragraph = cell.paragraphs[0]
     if paragraph.runs:
         paragraph.runs[0].text = text
@@ -26,20 +124,84 @@ def _set_cell(cell, value):
     paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = Pt(0)
     paragraph.paragraph_format.line_spacing = 1
+    _apply_font(paragraph)
 
 
 def _set_paragraph(paragraph, value):
-    text = str(value if value not in (None, "") else MISSING)
+    text = _house_style(str(value if value not in (None, "") else MISSING))
     if paragraph.runs:
         paragraph.runs[0].text = text
         for run in paragraph.runs[1:]:
             run.text = ""
     else:
         paragraph.add_run(text)
+    _apply_font(paragraph)
 
 
 def _remove_paragraph(paragraph):
     paragraph._element.getparent().remove(paragraph._element)
+
+
+def _insert_paragraph_before(document, anchor_element, text, bold=False, bullet=False):
+    """Inserts a new paragraph directly before anchor_element (a table's or
+    paragraph's own oxml element) -- used for content the fixed templates
+    have no placeholder slot for, e.g. the MED dual-reading structure and
+    Section D's mandatory verbatim framing text."""
+    new_p = OxmlElement("w:p")
+    anchor_element.addprevious(new_p)
+    paragraph = Paragraph(new_p, document)
+    run = paragraph.add_run(("• " if bullet else "") + _house_style(text))
+    run.bold = bold
+    _apply_font(paragraph)
+    return paragraph
+
+
+def _ensure_table_rows(table, needed_rows):
+    """Adds rows to a fixed-shape template table when the house-style
+    spec needs one more field than the template has (e.g. Contact),
+    copying the last existing row's cell formatting (shading, borders) so
+    the new row doesn't render as plain, unstyled cells."""
+    from copy import deepcopy
+
+    while len(table.rows) < needed_rows:
+        template_row = table.rows[-1]._tr
+        new_row = deepcopy(template_row)
+        for cell in new_row.findall(qn("w:tc")):
+            for text_el in cell.findall(f".//{qn('w:t')}"):
+                text_el.text = ""
+        table._tbl.append(new_row)
+
+
+def _insert_med_dual_reading(document, anchor_element, context, include_reasoning=True):
+    """House style (2026-08-19): a MED capability_fit is genuinely ambiguous
+    between a build and a packaged-product purchase and must present both
+    readings as their own structure, not one averaged reasoning sentence.
+    Inserted directly before anchor_element (a table's or paragraph's own
+    oxml element) since neither template has a placeholder for this --
+    only rendered when capability_fit is actually MED and the model
+    produced real dual-reading content."""
+    if context["ai_read"]["capability_fit"] != "MED":
+        return
+    dual = context["med_dual_reading"]
+    build_signals = dual.get("build_signals") or []
+    product_signals = dual.get("product_signals") or []
+    honest_position = dual.get("honest_position")
+    if not (build_signals or product_signals or honest_position):
+        return
+    anchor = anchor_element
+    reasoning = include_reasoning and context["ai_read"].get("per_field_reasoning", {}).get("capability_fit")
+    if reasoning and reasoning != MISSING:
+        _insert_paragraph_before(document, anchor, reasoning)
+    if build_signals:
+        _insert_paragraph_before(document, anchor, "Signals that point to a build:", bold=True)
+        for signal in build_signals:
+            _insert_paragraph_before(document, anchor, signal, bullet=True)
+    if product_signals:
+        _insert_paragraph_before(document, anchor, "Signals that point to a packaged product purchase:", bold=True)
+        for signal in product_signals:
+            _insert_paragraph_before(document, anchor, signal, bullet=True)
+    if honest_position:
+        _insert_paragraph_before(document, anchor, f"The honest position: {honest_position}")
 
 
 def _set_hyperlink(cell, label, url):
@@ -56,7 +218,10 @@ def _set_hyperlink(cell, label, url):
     colour.set(qn("w:val"), "0563C1")
     underline = OxmlElement("w:u")
     underline.set(qn("w:val"), "single")
-    properties.extend((colour, underline))
+    fonts = OxmlElement("w:rFonts")
+    for attr in ("w:ascii", "w:hAnsi", "w:eastAsia", "w:cs"):
+        fonts.set(qn(attr), _HOUSE_FONT)
+    properties.extend((fonts, colour, underline))
     text = OxmlElement("w:t")
     text.text = label
     run.extend((properties, text))
@@ -225,7 +390,7 @@ def _tracker_status_text(context):
 
 def _client_brief_status_text(context):
     return (
-        f"Drafted {context['generated_at'][:10]}. PROVISIONAL — awaiting Victoria's "
+        f"Drafted {context['generated_at'][:10]}. PROVISIONAL, awaiting Victoria's "
         f"GO / NO-GO / Park decision before any release to Trifork."
     )
 
@@ -369,10 +534,25 @@ def _set_footer(document, context):
         )
 
 
+_SECTION_D_VERBATIM = (
+    "Listed below are only genuine blockers, meaning things that would physically prevent or "
+    "materially complicate a bid: an unresolved type of work, an absent product, a named "
+    "framework, or a hard deadline. Per Victoria's direction of 11 August 2026, Trifork's UK "
+    "track record, entity size, buyer relationships and clearance position are not treated as "
+    "blockers or risks. Establishing UK delivery references is the purpose of the Bid Savvy "
+    "engagement, and those points are handled in capture strategy, not flagged as reasons for "
+    "caution."
+)
+
+
 def build_internal_addendum_docx(conn, notice_id, output_dir):
     context = build_context(conn, notice_id)
     document = Document(TEMPLATE_DIR / "internal_addendum_template.docx")
     tables = document.tables
+
+    # Section C's heading must name the actual rating; it was previously a
+    # static "HIGH" regardless of the notice's real capability_fit.
+    _set_paragraph(document.paragraphs[6], f"C. WHY THIS IS A {context['ai_read']['capability_fit']} FIT")
 
     _set_cell(
         tables[0].cell(0, 0),
@@ -385,6 +565,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         "INTERNAL USE ONLY — NOT FOR CLIENT DISTRIBUTION. This document is for Victoria Milan's "
         "GO / NO-GO / Park decision and must not be shared externally.",
     )
+    _shade_cell(tables[1].cell(0, 0), **_CALLOUT_RED)
     gates = context["gate_outcomes"][:5]
     for index in range(1, 6):
         gate = gates[index - 1] if index <= len(gates) else None
@@ -395,7 +576,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         ("Spotted by", f"{context['owner_name']}, Bid Savvy Solutions Ltd" if context["owner_name"] != MISSING else MISSING),
         ("Date spotted", context["date_spotted"]),
         ("Pipeline reference", _pipeline_reference(context)),
-        ("Phase 2 status", f"{context['ai_read']['overall']} — PROVISIONAL — FOR VALIDATION"),
+        ("Phase 2 status", f"{context['ai_read']['overall']} — PROVISIONAL, FOR VALIDATION"),
         ("Client brief status", _client_brief_status_text(context)),
         ("Tracker status", _tracker_status_text(context)),
         ("Notice reference", _notice_reference_with_source(context)),
@@ -407,6 +588,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         else:
             _set_cell(tables[3].cell(row_index, 1), value)
 
+    _insert_med_dual_reading(document, tables[4]._tbl, context)
     mapping_rows = _capability_mapping_rows(context)
     _set_cell(tables[4].cell(0, 0), "Buyer problem")
     _set_cell(tables[4].cell(0, 1), "Trifork capability mapping")
@@ -416,6 +598,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
         _set_cell(tables[4].cell(row_index, 1), capability)
     _trim_table_rows(tables[4], max(1, len(mapping_rows)))
 
+    _insert_paragraph_before(document, tables[5]._tbl, _SECTION_D_VERBATIM)
     risks = context["blockers_risks"]
     if risks:
         for row_index in range(1, min(len(tables[5].rows), len(risks) + 1)):
@@ -423,12 +606,14 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
             _set_cell(tables[5].cell(row_index, 0), blocker)
             _set_cell(tables[5].cell(row_index, 1), assessment)
     else:
-        _set_cell(tables[5].cell(1, 0), "No blockers identified")
-        _set_cell(
-            tables[5].cell(1, 1),
-            "Phase 2 found no blocker against the three-item test (wrong type of work, "
-            "a named framework Trifork isn't a member of, or a closed window).",
-        )
+        # House style (2026-08-19): an empty blockers list is a valid,
+        # genuine result, and must read as one clear line, not a padded or
+        # blank-dashed table. Removing the table element entirely would
+        # shift every later table's position once the file is reopened
+        # (breaks the fixed-index reads elsewhere), so this keeps one row
+        # carrying the exact required line instead.
+        _set_cell(tables[5].cell(1, 0), "No genuine blockers identified.")
+        _set_cell(tables[5].cell(1, 1), "")
     _trim_table_rows(tables[5], max(1, len(risks)))
 
     asks = context["direct_asks"] or _victoria_asks(context)
@@ -439,6 +624,7 @@ def build_internal_addendum_docx(conn, notice_id, output_dir):
     _trim_table_rows(tables[6], max(1, len(asks)))
 
     _set_cell(tables[7].cell(0, 0), _final_decision_text(context))
+    _shade_cell(tables[7].cell(0, 0), **_CALLOUT_BLUE)
     _set_paragraph(
         document.paragraphs[-1],
         f"Prepared by {context['owner_name']}, Bid Savvy Solutions Ltd | Internal use only | "
@@ -467,9 +653,11 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     _set_cell(
         tables[1].cell(0, 0),
         f"Why this matters: {executive_view} "
-        f"Decision point: {_recommended_action(context)} PROVISIONAL — FOR VALIDATION.",
+        f"Decision point: {_recommended_action(context)} PROVISIONAL, FOR VALIDATION.",
     )
+    _shade_cell(tables[1].cell(0, 0), **_CALLOUT_BLUE)
     _set_cell(tables[2].cell(0, 0), f"Submission deadline: {context['submission_deadline']} | {_urgency_text(context)}")
+    _shade_cell(tables[2].cell(0, 0), **_CALLOUT_RED)
 
     key_terms = _key_terms_rows(context) or [("None", "The notice is in plain English; no jargon requires explanation.")]
     for row_index in range(1, min(len(tables[3].rows), len(key_terms) + 1)):
@@ -486,9 +674,11 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         ("Framework status", context["framework_status"]),
         ("Estimated contract value", _format_value(context)),
         ("Main CPV codes", ", ".join(context["cpv_codes"]) or MISSING),
+        ("Contact", context["buyer_contact"]),
         ("Notice link", "Open published notice"),
         ("Owner", context["owner_name"]),
     )
+    _ensure_table_rows(tables[4], len(info) + 1)
     for row_index, (field, value) in enumerate(info, start=1):
         _set_cell(tables[4].cell(row_index, 0), field)
         if field == "Notice link" and context["notice_url"] != MISSING:
@@ -503,9 +693,15 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
         _set_cell(tables[5].cell(row_index, 1), value)
     _trim_table_rows(tables[5], max(1, len(milestones)))
 
-    _set_cell(tables[6].cell(1, 0), context["ai_read"]["capability_fit"])
-    _set_cell(tables[6].cell(1, 1), context["ai_read"]["competitor_position"])
-    _set_cell(tables[6].cell(1, 2), context["ai_read"]["right_to_win"])
+    for column, rating in enumerate((
+        context["ai_read"]["capability_fit"],
+        context["ai_read"]["competitor_position"],
+        context["ai_read"]["right_to_win"],
+    )):
+        cell = tables[6].cell(1, column)
+        _set_cell(cell, rating)
+        _color_rating_run(cell.paragraphs[0], rating)
+        cell.paragraphs[0].alignment = 1  # WD_ALIGN_PARAGRAPH.CENTER
 
     decision_rows = _decision_framework_rows(context)
     for row_index in range(1, min(len(tables[7].rows), len(decision_rows) + 1)):
@@ -542,7 +738,7 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     replacements = {
         2: executive[0],
         3: executive[1],
-        4: executive[2] + " PROVISIONAL — FOR VALIDATION.",
+        4: executive[2] + " PROVISIONAL, FOR VALIDATION.",
         14: "The published notice describes the following scope:",
         23: "What the buyer is seeking from this engagement",
         24: _what_buyer_seeking(context),
@@ -576,6 +772,12 @@ def build_capture_brief_docx(conn, notice_id, output_dir):
     # these were unconditionally deleted instead of populated, which is why
     # Section 6 read as one generic sentence instead of the sample's cited
     # case-study list.
+    # Paragraph 31 already carries the single capability_fit reasoning
+    # sentence, so the dual-reading insert here skips re-adding it and only
+    # contributes the build/product signal lists plus the honest-position
+    # line when the rating is genuinely MED.
+    _insert_med_dual_reading(document, paragraphs[32]._element, context, include_reasoning=False)
+
     case_study_paragraphs = paragraphs[32:36]
     case_studies = [row.get("capability_mapping", MISSING) for row in context["capability_mapping"]][:4]
     for index, paragraph in enumerate(case_study_paragraphs):

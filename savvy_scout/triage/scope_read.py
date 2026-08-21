@@ -159,6 +159,24 @@ SCOPE_READ_SCHEMA = {
             "required": ["recommendation", "rationale"],
             "additionalProperties": False,
         },
+        # Section C / Section 6's dual reading for a MED capability_fit:
+        # per Bid Savvy house style, a MED rating is genuinely ambiguous
+        # between a build and a packaged-product purchase and must be
+        # presented as two separate readings, not one averaged claim.
+        # Populate all three properties always; when capability_fit is HIGH
+        # or LOW there is no genuine ambiguity, so leave build_signals and
+        # product_signals empty and honest_position empty too -- the
+        # document only renders this section for a MED rating.
+        "med_dual_reading": {
+            "type": "object",
+            "properties": {
+                "build_signals": {"type": "array", "items": {"type": "string"}},
+                "product_signals": {"type": "array", "items": {"type": "string"}},
+                "honest_position": {"type": "string"},
+            },
+            "required": ["build_signals", "product_signals", "honest_position"],
+            "additionalProperties": False,
+        },
         # Genuine GO/NO-GO decision points for Victoria, each framed as a
         # question with what a yes/no answer implies for the recommendation
         # -- not a restatement of asks (which are questions FOR Trifork/the
@@ -274,6 +292,7 @@ SCOPE_READ_SCHEMA = {
         "capability_mapping", "positioning_points", "blockers", "asks", "recommendation",
         "executive_summary", "key_terms", "scope_of_requirement", "engagement_model",
         "procurement_timetable", "decision_framework", "solo_or_partner_recommendation",
+        "med_dual_reading",
     ],
     "additionalProperties": False,
 }
@@ -326,13 +345,19 @@ Rules:
    buyer. Frame each as something to address, never as a reason for doubt.
 
 6. capability_mapping: pair each real buyer-side requirement stated in the notice with the
-   SPECIFIC named Trifork case study or product that maps to it. Name the actual case study:
-   ALai, &Money, Nordjyllandsfonden, AI Mail Assist; or the actual product: Corax (AI analytics
-   and decision support, clinical and AI data), Tiris Messenger (secure operational and
-   safety-critical messaging), iFly4 (airline operations), Trifork PIM (planning, optimisation,
-   scenario analysis), LOFTHome, Synq. Never a generic label alone. If nothing in the profile
-   genuinely maps to a requirement, say so plainly in that row rather than stretching a weak
-   analogy.
+   SPECIFIC named Trifork case study or product that maps to it. Only four verified case studies
+   exist, and no others: &Money (AI financial advisory platform used by Nykredit, AL Sydbank and
+   BEC), Nordjyllandsfonden (AI document and application processing for grant administration),
+   ALai (secure internal AI assistant for Arbejdernes Landsbank and AL Sydbank), AI Mail Assist
+   (for OK a.m.b.a., energy sector). Every one of these is Danish, private or third-sector, in
+   the roughly GBP 100,000 to GBP 300,000 range; never imply a UK public sector engagement or a
+   larger value for any of them. NEVER name Vocalink, Visa, Danske Bank or any other case study --
+   these have been used in error before and corrected, and are not verified proof points. The
+   products that may be named instead: Corax (AI analytics and decision support, clinical and
+   AI data), Tiris Messenger (secure operational and safety-critical messaging), iFly4 (airline
+   operations), Trifork PIM (planning, optimisation, scenario analysis), LOFTHome, Synq. Never a
+   generic label alone. If nothing in the profile genuinely maps to a requirement, say so plainly
+   in that row rather than stretching a weak analogy.
 
 7. competitor_position: assess only from what the notice reveals. Use UNKNOWN where no incumbent
    or competitive field is identifiable. Do not assume a strong competitive field exists in the
@@ -406,6 +431,26 @@ Rules:
       response, whether the positioning points can realistically be addressed in time), each
       paired with what a yes or a no means for the recommendation. These are decisions FOR
       Victoria, distinct from asks (which are questions routed TO Trifork/the buyer).
+    - med_dual_reading: only meaningful when capability_fit is MED. build_signals lists the
+      specific notice wording that points to real build content; product_signals lists the
+      specific notice wording that points to a packaged-product purchase (a 48xxxxxx CPV,
+      "procure and implement", a supplier demonstration stage, a licence-based user model, an
+      evaluation of what the market already offers). honest_position is one paragraph stating
+      plainly that this is genuinely unclear between a build and a packaged-product purchase,
+      not an averaged guess. When capability_fit is HIGH or LOW there is no genuine ambiguity to
+      present two ways: leave build_signals and product_signals as empty lists and
+      honest_position as an empty string.
+
+14. House style, non-negotiable for every text field you write:
+    - UK English. No em dash or en dash character anywhere, including inside a sentence where
+      you might otherwise use one for an aside: use a comma, colon, semicolon or pipe instead.
+    - Never write: delve, tapestry, navigate the complexities, robust, seamless, leverage (as a
+      verb), world class, cutting edge, best in class. Write plainly instead.
+    - Never invent a fact: no figure, date, contact, CPV code or requirement not present in the
+      notice text you were given. Where a field is genuinely absent, say UNVERIFIED or
+      "Not stated" rather than estimating or guessing.
+    - Use the buyer's exact published opportunity title where you reference it; never shorten or
+      tidy it, since a shortened title cannot be searched for on the source portal.
 
 This is a provisional, machine-generated read for a human to validate, not a bid decision."""
 
@@ -539,8 +584,8 @@ def save_scope_read(
         "capability_mapping, positioning_points, blockers, asks, recommendation, "
         "executive_summary, key_terms, scope_of_requirement, engagement_model, "
         "procurement_timetable, decision_framework, solo_or_partner_recommendation, "
-        "model_used, created_at"
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "med_dual_reading, model_used, created_at"
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             notice_id,
             assessment["capability_fit"]["rating"],
@@ -564,6 +609,7 @@ def save_scope_read(
             json.dumps(assessment["procurement_timetable"]) if assessment.get("procurement_timetable") else None,
             json.dumps(assessment["decision_framework"]) if assessment.get("decision_framework") else None,
             json.dumps(assessment["solo_or_partner_recommendation"]) if assessment.get("solo_or_partner_recommendation") else None,
+            json.dumps(assessment["med_dual_reading"]) if assessment.get("med_dual_reading") else None,
             model_used,
             now,
         ),

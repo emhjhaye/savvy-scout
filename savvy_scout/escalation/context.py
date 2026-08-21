@@ -145,6 +145,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         procurement_timetable = _json_value(assessment["procurement_timetable"], [])
         decision_framework = _json_value(assessment["decision_framework"], [])
         solo_or_partner = _json_value(assessment["solo_or_partner_recommendation"], {})
+        med_dual_reading = _json_value(assessment["med_dual_reading"], {})
     else:
         ai_read = {
             "capability_fit": MISSING,
@@ -160,6 +161,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         executive_summary, key_terms, scope_of_requirement, engagement_model = {}, [], {}, {}
         procurement_timetable, decision_framework = [], []
         solo_or_partner = {}
+        med_dual_reading = {}
 
     framework_gate = next((gate for gate in gates if "framework" in gate["gate_name"].casefold()), None)
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -180,6 +182,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         "currency": currency,
         "route_to_market": _display(notice["procurement_method_details"] or notice["procurement_method"]),
         "framework_status": framework_gate["reason"] if framework_gate else MISSING,
+        "buyer_contact": _display(notice["buyer_contact_email"]),
         "date_spotted": _iso_date(notice["first_seen_at"]),
         "published_date": _iso_date(notice["published_at"]),
         "clarification_deadline": _iso_date(notice["enquiry_period_end"]),
@@ -200,6 +203,7 @@ def build_context(conn: sqlite3.Connection, notice_id: int) -> dict:
         "procurement_timetable_ai": procurement_timetable,
         "decision_framework": decision_framework,
         "solo_or_partner_recommendation": solo_or_partner,
+        "med_dual_reading": med_dual_reading,
         "recommended_next_action": _display(
             recommendation.get("decision") or (owner_decision["reason"] if owner_decision else None)
         ),

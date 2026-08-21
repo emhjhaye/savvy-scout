@@ -185,6 +185,21 @@ def test_capture_brief_has_exact_ten_sections_in_order(conn, tmp_path):
 
 def test_word_internal_addendum_has_required_sections(conn, tmp_path):
     notice_id = _make_notice(conn)
+    # Section C's heading now names the real rating (2026-08-19 house style
+    # fix; it used to say "HIGH" unconditionally regardless of the actual
+    # capability_fit), so this needs a real assessment on file to assert
+    # against.
+    save_scope_read(
+        conn,
+        notice_id,
+        {
+            "capability_fit": {"rating": "HIGH", "reasoning": "Strong engineering fit."},
+            "competitor_position": {"rating": "UNKNOWN", "reasoning": "Not assessed."},
+            "right_to_win": {"rating": "MED", "reasoning": "Adjacent capability."},
+            "overall": {"rating": "PURSUE", "reasoning": "Closest available match."},
+            "open_questions": [],
+        },
+    )
     path = build_internal_addendum_docx(conn, notice_id, str(tmp_path / "briefs"))
     full_text = _docx_text(path)
 
@@ -196,7 +211,7 @@ def test_word_internal_addendum_has_required_sections(conn, tmp_path):
     )]
     assert positions == sorted(positions)
     assert "INTERNAL USE ONLY" in full_text
-    assert "PROVISIONAL — FOR VALIDATION" in full_text
+    assert "PROVISIONAL, FOR VALIDATION" in full_text
     assert "Smarter Bids. Real Results." in full_text
 
 
@@ -215,7 +230,7 @@ def test_word_capture_brief_has_exact_ten_sections(conn, tmp_path):
     )
     positions = [full_text.index(title) for title in headings]
     assert positions == sorted(positions)
-    assert "PROVISIONAL — FOR VALIDATION" in full_text
+    assert "PROVISIONAL, FOR VALIDATION" in full_text
     assert "Smarter Bids. Real Results." in full_text
 
 
@@ -242,7 +257,7 @@ def test_word_capture_brief_is_executive_and_has_live_notice_link(conn, tmp_path
         if relationship.reltype == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
     }
     assert "https://www.find-tender.service.gov.uk/Notice/REF-BRIEF-1" in hyperlink_targets
-    notice_link_cell = document.tables[4].cell(8, 1)
+    notice_link_cell = document.tables[4].cell(9, 1)
     assert notice_link_cell._tc.xpath(".//w:hyperlink")
 
 

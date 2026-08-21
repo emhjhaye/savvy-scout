@@ -327,6 +327,7 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     for col in (
         "executive_summary", "key_terms", "scope_of_requirement", "engagement_model",
         "procurement_timetable", "decision_framework", "solo_or_partner_recommendation",
+        "med_dual_reading",
     ):
         if col not in assessment_cols:
             conn.execute(f"ALTER TABLE phase2_assessments ADD COLUMN {col} TEXT")
