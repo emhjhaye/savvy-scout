@@ -61,9 +61,13 @@ def _require_env(name: str) -> str:
     return value
 
 
-def send_email(to_address: str, subject: str, body: str) -> None:
-    """Send a plain-text email via SMTP. Raises NotificationError on failure."""
-    _send_email_message(to_address, subject, body, attachment_path=None)
+def send_email(to_address: str, subject: str, body: str, html_body: str | None = None) -> None:
+    """Send an email via SMTP: plain text, or plain text with an HTML
+    alternative when html_body is given (a real multipart/alternative
+    message, not HTML-only -- keeps a plain-text fallback for clients that
+    prefer it, and avoids the HTML-only signal some spam filters weight).
+    Raises NotificationError on failure."""
+    _send_email_message(to_address, subject, body, attachment_path=None, html_body=html_body)
 
 
 def send_email_with_attachment(
@@ -86,7 +90,7 @@ def send_email_with_attachment(
 
 
 def _send_email_message(
-    to_address: str, subject: str, body: str, attachment_path: str | None
+    to_address: str, subject: str, body: str, attachment_path: str | None, html_body: str | None = None
 ) -> None:
     host = _require_env("SMTP_HOST")
     port = int(os.environ.get("SMTP_PORT", "587"))
@@ -100,6 +104,8 @@ def _send_email_message(
     message["From"] = f"{SENDER_DISPLAY_NAME} <{sender}>"
     message["To"] = to_address
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
 
     if attachment_path:
         from pathlib import Path
@@ -225,19 +231,60 @@ def send_victoria_escalation_email(
     send_email(to_address, subject, "\n".join(lines))
 
 
-def _reminder_lines(item: dict) -> list[str]:
-    lines = [
-        f"  {item['title']}",
+def _item_link(item: dict, app_url: str) -> str | None:
+    if app_url and item.get("notice_id"):
+        return f"{app_url}/notices/{item['notice_id']}"
+    return None
+
+
+def _reminder_lines(item: dict, app_url: str) -> list[str]:
+    lines = [f"  {item['title']}"]
+    link = _item_link(item, app_url)
+    if link:
+        lines.append(f"  Link: {link}")
+    lines.extend([
         f"  Buyer: {item.get('buyer') or 'Unknown'}",
         f"  Reference: {item['ref']}",
+        f"  Value: {item.get('value') or 'Not stated'}",
         f"  Owner: {item.get('owner') or 'Unassigned'}",
-        f"  Escalated: {item.get('escalated_at') or 'Unknown'}",
-    ]
+    ])
     if item.get("deadline"):
         lines.append(f"  Deadline: {item['deadline']}")
     if item.get("why"):
         lines.append(f"  Why this needs a decision: {item['why']}")
     return lines
+
+
+def _reminder_card_html(item: dict, app_url: str, accent: str) -> str:
+    import html as _html
+
+    link = _item_link(item, app_url)
+    title = _html.escape(item["title"])
+    title_html = f'<a href="{_html.escape(link)}" style="color:#1a4fa0;text-decoration:none;">{title}</a>' if link else title
+    rows = [
+        ("Buyer", item.get("buyer") or "Unknown"),
+        ("Reference", item["ref"]),
+        ("Value", item.get("value") or "Not stated"),
+        ("Owner", item.get("owner") or "Unassigned"),
+    ]
+    if item.get("deadline"):
+        rows.append(("Deadline", item["deadline"]))
+    field_rows = "".join(
+        f'<tr><td style="padding:2px 8px 2px 0;color:#666;font-size:13px;white-space:nowrap;">{_html.escape(str(label))}</td>'
+        f'<td style="padding:2px 0;font-size:13px;">{_html.escape(str(value))}</td></tr>'
+        for label, value in rows
+    )
+    why_html = (
+        f'<p style="margin:8px 0 0;font-size:13px;color:#333;"><b>Why this needs a decision:</b> {_html.escape(item["why"])}</p>'
+        if item.get("why") else ""
+    )
+    return (
+        f'<div style="border-left:4px solid {accent};background:#fafafa;padding:10px 14px;margin-bottom:10px;border-radius:4px;">'
+        f'<div style="font-size:15px;font-weight:600;margin-bottom:4px;">{title_html}</div>'
+        f'<table style="border-collapse:collapse;">{field_rows}</table>'
+        f'{why_html}'
+        f'</div>'
+    )
 
 
 def send_victoria_reminder_digest_email(
@@ -253,24 +300,36 @@ def send_victoria_reminder_digest_email(
       strong opportunity never quietly expires just because the clock
       wasn't the trigger.
     Each item carries its own "why" so the email explains the decision, not
-    just names it. Callers should only call this when there is genuinely
-    something in at least one list -- an empty digest is noise, not a
-    reminder."""
+    just names it. Sent as HTML with a plain-text fallback (2026-08-21,
+    explicit feedback that a plain-text wall of words with no live link and
+    no value was hard to act on) -- each opportunity is its own card with a
+    clickable link straight to the notice and its indicative value shown.
+    Callers should only call this when there is genuinely something in at
+    least one list -- an empty digest is noise, not a reminder."""
     lines = [
         "Hi Victoria,",
         "",
         "The following escalations are still awaiting your go / no-go / park decision.",
     ]
+    html_sections = []
     if urgent_items:
         lines.extend(["", "URGENT, DEADLINE APPROACHING", ""])
         for item in urgent_items:
-            lines.extend(_reminder_lines(item))
+            lines.extend(_reminder_lines(item, app_url))
             lines.append("")
+        html_sections.append(
+            '<h3 style="color:#af1f23;font-size:14px;margin:18px 0 8px;">URGENT, DEADLINE APPROACHING</h3>'
+            + "".join(_reminder_card_html(item, app_url, "#af1f23") for item in urgent_items)
+        )
     if high_value_items:
         lines.extend(["", "STRONG OPPORTUNITIES AWAITING YOUR DECISION", ""])
         for item in high_value_items:
-            lines.extend(_reminder_lines(item))
+            lines.extend(_reminder_lines(item, app_url))
             lines.append("")
+        html_sections.append(
+            '<h3 style="color:#1a4fa0;font-size:14px;margin:18px 0 8px;">STRONG OPPORTUNITIES AWAITING YOUR DECISION</h3>'
+            + "".join(_reminder_card_html(item, app_url, "#1a4fa0") for item in high_value_items)
+        )
     lines.append(f"Review outstanding escalations here: {app_url}" if app_url else "Review outstanding escalations in Savvy Scout.")
     subject_bits = []
     if urgent_items:
@@ -278,7 +337,21 @@ def send_victoria_reminder_digest_email(
     if high_value_items:
         subject_bits.append(f"{len(high_value_items)} high-value")
     subject = f"Savvy Scout: {' and '.join(subject_bits)} escalation(s) awaiting your decision"
-    send_email(to_address, subject, "\n".join(lines))
+
+    footer_link = (
+        f'<p style="font-size:13px;margin-top:16px;"><a href="{app_url}" style="color:#1a4fa0;">'
+        f"Review outstanding escalations in Savvy Scout</a></p>"
+        if app_url else ""
+    )
+    html_body = (
+        '<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;max-width:640px;">'
+        "<p>Hi Victoria,</p>"
+        "<p>The following escalations are still awaiting your go / no-go / park decision.</p>"
+        + "".join(html_sections)
+        + footer_link
+        + "</div>"
+    )
+    send_email(to_address, subject, "\n".join(lines), html_body=html_body)
 
 
 def send_new_opportunity_teams_message(

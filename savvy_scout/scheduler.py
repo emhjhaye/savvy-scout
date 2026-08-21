@@ -145,7 +145,7 @@ def run_monthly_report_job() -> None:
 def _pending_victoria_escalations(conn) -> list:
     rows = conn.execute(
         """
-        SELECT n.id, n.ref, n.title, n.buyer, n.owner, n.deadline,
+        SELECT n.id, n.ref, n.title, n.buyer, n.owner, n.deadline, n.indicative_value,
                p.overall_rating, p.overall_reasoning,
                p.capability_fit_rating, p.capability_fit_reasoning
         FROM notices n
@@ -186,8 +186,9 @@ def run_victoria_reminder_job() -> None:
         urgent, high_value = [], []
         for row in rows:
             item = {
-                "ref": row["ref"], "title": row["title"], "buyer": row["buyer"], "owner": row["owner"],
-                "deadline": row["deadline"], "escalated_at": escalated_at_by_id.get(row["id"]),
+                "notice_id": row["id"], "ref": row["ref"], "title": row["title"], "buyer": row["buyer"],
+                "owner": row["owner"], "deadline": row["deadline"], "value": row["indicative_value"],
+                "escalated_at": escalated_at_by_id.get(row["id"]),
             }
             days_left = None
             if row["deadline"]:
