@@ -39,7 +39,7 @@ MANILA = ZoneInfo("Asia/Manila")
 # and government sources do publish notices over the weekend -- confirmed
 # live the same day when a Sunday-published notice was invisible in every
 # day column despite correctly counting in This Week/This Month/YTD.
-WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+WEEKDAY_LABELS = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
 
 # Shared colour language for the Overview page's pie/donut charts -- the
 # same colours are used for the legend swatches and the CSS conic-gradient
@@ -182,14 +182,21 @@ def _perf_row(label, bucket, weekdays, **extra):
 
 
 def _perf_windows(now_uk: datetime):
-    """Shared Mon-Sun-this-week + week/month/YTD window boundaries for every
+    """Shared Sat-Fri-this-week + week/month/YTD window boundaries for every
     Overview performance table (Sector, Source, ...), so they all report
     against the exact same date ranges. Full 7-day week, not just Mon-Fri
     (2026-08-10) -- the sweep runs every day and sources do publish notices
     on weekends, so a Sat/Sun notice needs its own day column too instead of
-    only counting in the week/month/YTD rollups."""
+    only counting in the week/month/YTD rollups.
+
+    Week starts Saturday, not Monday (2026-08-19, explicit request): the
+    scouting work week ends Friday, so a Monday-Sunday week was hiding the
+    weekend that had JUST passed the moment Monday's row reset -- Mark
+    could no longer see Saturday/Sunday's own figures at all once a new
+    week began. Starting the week on Saturday keeps the most recent
+    weekend visible at the front of the row through the following week."""
     today = now_uk.date()
-    week_start = today - timedelta(days=now_uk.weekday())
+    week_start = today - timedelta(days=(now_uk.weekday() - 5) % 7)
     week_end = week_start + timedelta(days=6)
     weekdays = [week_start + timedelta(days=i) for i in range(7)]
     month_start = today.replace(day=1)
@@ -490,7 +497,10 @@ def index():
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
     tomorrow_start = today_start + timedelta(days=1)
-    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Saturday-start week (2026-08-19), matching _perf_windows below --
+    # otherwise this KPI tile's "This Week" figure would disagree with the
+    # Sector/Source Performance tables on what "this week" even means.
+    week_start = (now - timedelta(days=(now.weekday() - 5) % 7)).replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 

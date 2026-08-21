@@ -129,7 +129,7 @@ def test_overview_shows_scouting_report(tmp_path):
 
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = (now - timedelta(days=(now.weekday() - 5) % 7)).replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     year_start = now.replace(month=1, day=1, hour=0, minute=0, microsecond=0)
 
@@ -257,7 +257,7 @@ def test_amended_old_notice_does_not_inflate_todays_count(tmp_path):
     source_perf = _build_source_performance(setup_conn, now_uk)
     setup_conn.close()
 
-    # "week" (Mon-Sun of the current week) is deterministic regardless of
+    # "week" (Sat-Fri of the current week) is deterministic regardless of
     # what day the test runs on: 3 weeks ago is never in it, today always
     # is. If first_published_at weren't pinned, REF-AMENDED's published_at
     # (bumped to today by the simulated amendment) would put it here too,
@@ -273,7 +273,7 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     invisible in every day column of Sector Performance/Notices by Source,
     since those tables only had Mon-Fri columns even though the daily sweep
     has no day_of_week restriction and sources do publish on weekends. Now
-    a full Mon-Sun week, so the notice's real publish day shows up."""
+    a full Sat-Fri week, so the notice's real publish day shows up."""
     from zoneinfo import ZoneInfo
 
     from savvy_scout.dashboard.routes.home import _build_sector_performance, _build_source_performance, _perf_windows
@@ -285,7 +285,7 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
 
     now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
     weekdays, week_start, _, _, _ = _perf_windows(now_uk)
-    sunday = weekdays[6]
+    sunday = weekdays[1]
 
     _insert_notice_with_publish_dates(
         setup_conn, "REF-SUNDAY",
@@ -299,13 +299,13 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     source_perf = _build_source_performance(setup_conn, now_uk)
     setup_conn.close()
 
-    assert [d["label"] for d in sector_perf["day_headers"]] == ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    assert [d["label"] for d in sector_perf["day_headers"]] == ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"]
 
     swept_total_row = next(r for r in sector_perf["rows"] if r["sector"] == "Total Swept (all sources)")
     source_row = next(r for r in source_perf["rows"] if r["sector"] == "Find a Tender")
-    assert swept_total_row["days"][6] == 1  # Sunday column
-    assert swept_total_row["days"][:6] == [0, 0, 0, 0, 0, 0]
-    assert source_row["days"][6] == 1
+    assert swept_total_row["days"][1] == 1  # Sunday column
+    assert swept_total_row["days"][:1] + swept_total_row["days"][2:] == [0, 0, 0, 0, 0, 0]
+    assert source_row["days"][1] == 1
     assert swept_total_row["week"] == 1
 
 
