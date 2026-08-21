@@ -17,7 +17,8 @@ copy, which has no OS-level scheduler to lean on.
 from __future__ import annotations
 
 import logging
-from datetime import date
+import os
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -26,7 +27,12 @@ from savvy_scout.config import load_settings
 from savvy_scout.db.backup import backup_database
 from savvy_scout.db.connection import get_connection, init_db
 from savvy_scout.db.seed_config import seed_all
-from savvy_scout.notifications import NotificationError, send_email_with_attachment
+from savvy_scout.notifications import (
+    APPROACHING_DAYS,
+    NotificationError,
+    send_email_with_attachment,
+    send_victoria_reminder_digest_email,
+)
 from savvy_scout.reporting.reports import generate_monthly_report, generate_weekly_report, most_recent_monday
 from savvy_scout.sweep.runner import run_sweep
 
@@ -72,21 +78,37 @@ def run_daily_backup() -> None:
         logger.warning("Scheduled backup skipped: no database file yet at %s", settings.db_path)
 
 
-def _email_report(path: str, subject: str) -> None:
+def _report_recipients(conn, settings) -> list[str]:
+    """Explicit request (2026-08-21): Victoria was never on the Weekly/
+    Monthly report distribution, only whoever REPORT_RECIPIENT_EMAIL points
+    at (Mark). She gets every individual escalation email already
+    (_notify_victoria_of_escalation), but not this digest-level report."""
+    recipients = []
+    if settings.report_recipient_email:
+        recipients.append(settings.report_recipient_email)
+    victoria = conn.execute("SELECT email FROM users WHERE is_victoria = 1 LIMIT 1").fetchone()
+    if victoria and victoria["email"]:
+        recipients.append(victoria["email"])
+    return list(dict.fromkeys(recipients))
+
+
+def _email_report(conn, path: str, subject: str) -> None:
     settings = load_settings()
-    if not settings.report_recipient_email:
-        logger.warning("Report generated at %s but REPORT_RECIPIENT_EMAIL is unset; not emailed.", path)
+    recipients = _report_recipients(conn, settings)
+    if not recipients:
+        logger.warning("Report generated at %s but no recipients configured; not emailed.", path)
         return
-    try:
-        send_email_with_attachment(
-            settings.report_recipient_email,
-            subject,
-            "Attached: the latest auto-generated Trifork Scouting report from Savvy Scout.",
-            path,
-        )
-        logger.info("Emailed %s to %s", path, settings.report_recipient_email)
-    except NotificationError:
-        logger.exception("Failed to email report %s", path)
+    for recipient in recipients:
+        try:
+            send_email_with_attachment(
+                recipient,
+                subject,
+                "Attached: the latest auto-generated Trifork Scouting report from Savvy Scout.",
+                path,
+            )
+            logger.info("Emailed %s to %s", path, recipient)
+        except NotificationError:
+            logger.exception("Failed to email report %s to %s", path, recipient)
 
 
 def run_weekly_report_job() -> None:
@@ -98,7 +120,7 @@ def run_weekly_report_job() -> None:
     try:
         week_start = most_recent_monday()
         path = generate_weekly_report(conn, week_start, settings.reports_output_dir)
-        _email_report(path, f"Trifork Scouting Weekly Report {week_start.isoformat()}")
+        _email_report(conn, path, f"Trifork Scouting Weekly Report {week_start.isoformat()}")
     finally:
         conn.close()
 
@@ -115,7 +137,87 @@ def run_monthly_report_job() -> None:
         else:
             month_start = date(today.year, today.month - 1, 1)
         path = generate_monthly_report(conn, month_start, settings.reports_output_dir)
-        _email_report(path, f"Trifork Scouting Monthly Report {month_start.strftime('%Y-%m')}")
+        _email_report(conn, path, f"Trifork Scouting Monthly Report {month_start.strftime('%Y-%m')}")
+    finally:
+        conn.close()
+
+
+def _pending_victoria_escalations(conn) -> list:
+    rows = conn.execute(
+        """
+        SELECT n.id, n.ref, n.title, n.buyer, n.owner, n.deadline,
+               p.overall_rating, p.overall_reasoning,
+               p.capability_fit_rating, p.capability_fit_reasoning
+        FROM notices n
+        LEFT JOIN phase2_assessments p ON p.id = (
+            SELECT id FROM phase2_assessments WHERE notice_id = n.id ORDER BY id DESC LIMIT 1
+        )
+        WHERE n.status = 'ESCALATED_TO_VICTORIA'
+        """
+    ).fetchall()
+    escalated_at_by_id = {
+        row["notice_id"]: row["changed_at"]
+        for row in conn.execute(
+            "SELECT notice_id, MAX(changed_at) AS changed_at FROM status_history "
+            "WHERE to_status = 'ESCALATED_TO_VICTORIA' GROUP BY notice_id"
+        ).fetchall()
+    }
+    return rows, escalated_at_by_id
+
+
+def run_victoria_reminder_job() -> None:
+    """Explicit request (2026-08-21): a daily digest so an escalation
+    doesn't just sit awaiting Victoria's decision until she happens to
+    reopen the app -- split into deadline-driven urgency and a distinct
+    "this one's genuinely strong, don't let it lapse" reason, since the two
+    call for different levels of attention. Skips sending entirely when
+    nothing currently qualifies, so this stays a signal, not daily noise."""
+    settings = load_settings()
+    conn = get_connection(settings.db_path)
+    try:
+        victoria = conn.execute("SELECT email FROM users WHERE is_victoria = 1 LIMIT 1").fetchone()
+        if not victoria or not victoria["email"]:
+            logger.debug("No email on file for Victoria; skipping reminder digest.")
+            return
+
+        rows, escalated_at_by_id = _pending_victoria_escalations(conn)
+        app_url = (os.environ.get("SAVVY_SCOUT_APP_BASE_URL") or "").rstrip("/")
+        now = datetime.now(timezone.utc)
+        urgent, high_value = [], []
+        for row in rows:
+            item = {
+                "ref": row["ref"], "title": row["title"], "buyer": row["buyer"], "owner": row["owner"],
+                "deadline": row["deadline"], "escalated_at": escalated_at_by_id.get(row["id"]),
+            }
+            days_left = None
+            if row["deadline"]:
+                try:
+                    deadline_dt = datetime.fromisoformat(row["deadline"])
+                    if deadline_dt.tzinfo is None:
+                        deadline_dt = deadline_dt.replace(tzinfo=timezone.utc)
+                    days_left = (deadline_dt - now).days
+                except ValueError:
+                    days_left = None
+            is_urgent = days_left is not None and 0 <= days_left <= APPROACHING_DAYS
+            is_high_value = row["overall_rating"] == "PURSUE" or (
+                row["overall_rating"] == "FLAG" and row["capability_fit_rating"] == "HIGH"
+            )
+            if is_urgent:
+                item["why"] = f"{days_left} day(s) left before the deadline."
+                urgent.append(item)
+            elif is_high_value:
+                reason = row["overall_reasoning"] or row["capability_fit_reasoning"] or "Strong capability fit."
+                item["why"] = f"{row['overall_rating']} overall, {row['capability_fit_rating']} capability fit. {reason}"
+                high_value.append(item)
+
+        if not urgent and not high_value:
+            logger.debug("No outstanding Victoria escalations qualify for a reminder today.")
+            return
+        try:
+            send_victoria_reminder_digest_email(victoria["email"], urgent, high_value, app_url)
+            logger.info("Sent Victoria reminder digest: %d urgent, %d high-value", len(urgent), len(high_value))
+        except NotificationError:
+            logger.exception("Failed to send Victoria reminder digest")
     finally:
         conn.close()
 
@@ -129,6 +231,10 @@ def start_scheduler() -> BackgroundScheduler:
     )
     scheduler.add_job(
         run_monthly_report_job, "cron", day=1, hour=8, minute=0, timezone=LONDON, id="monthly_report"
+    )
+    scheduler.add_job(
+        run_victoria_reminder_job, "cron", day_of_week="mon-fri", hour=8, minute=30,
+        timezone=LONDON, id="victoria_reminder_digest",
     )
     scheduler.start()
     return scheduler

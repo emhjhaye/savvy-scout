@@ -225,6 +225,62 @@ def send_victoria_escalation_email(
     send_email(to_address, subject, "\n".join(lines))
 
 
+def _reminder_lines(item: dict) -> list[str]:
+    lines = [
+        f"  {item['title']}",
+        f"  Buyer: {item.get('buyer') or 'Unknown'}",
+        f"  Reference: {item['ref']}",
+        f"  Owner: {item.get('owner') or 'Unassigned'}",
+        f"  Escalated: {item.get('escalated_at') or 'Unknown'}",
+    ]
+    if item.get("deadline"):
+        lines.append(f"  Deadline: {item['deadline']}")
+    if item.get("why"):
+        lines.append(f"  Why this needs a decision: {item['why']}")
+    return lines
+
+
+def send_victoria_reminder_digest_email(
+    to_address: str, urgent_items: list[dict], high_value_items: list[dict], app_url: str,
+) -> None:
+    """Explicit request (2026-08-21): a daily digest of escalations still
+    awaiting Victoria's go/no-go/park, split into two distinct reasons she
+    needs to look, since a bare "reminder" without a reason to act on is
+    easy to skim past:
+    - urgent_items: deadline approaching, decision still outstanding.
+    - high_value_items: HIGH capability fit or an outright PURSUE
+      recommendation, still outstanding, regardless of deadline -- so a
+      strong opportunity never quietly expires just because the clock
+      wasn't the trigger.
+    Each item carries its own "why" so the email explains the decision, not
+    just names it. Callers should only call this when there is genuinely
+    something in at least one list -- an empty digest is noise, not a
+    reminder."""
+    lines = [
+        "Hi Victoria,",
+        "",
+        "The following escalations are still awaiting your go / no-go / park decision.",
+    ]
+    if urgent_items:
+        lines.extend(["", "URGENT, DEADLINE APPROACHING", ""])
+        for item in urgent_items:
+            lines.extend(_reminder_lines(item))
+            lines.append("")
+    if high_value_items:
+        lines.extend(["", "STRONG OPPORTUNITIES AWAITING YOUR DECISION", ""])
+        for item in high_value_items:
+            lines.extend(_reminder_lines(item))
+            lines.append("")
+    lines.append(f"Review outstanding escalations here: {app_url}" if app_url else "Review outstanding escalations in Savvy Scout.")
+    subject_bits = []
+    if urgent_items:
+        subject_bits.append(f"{len(urgent_items)} urgent")
+    if high_value_items:
+        subject_bits.append(f"{len(high_value_items)} high-value")
+    subject = f"Savvy Scout: {' and '.join(subject_bits)} escalation(s) awaiting your decision"
+    send_email(to_address, subject, "\n".join(lines))
+
+
 def send_new_opportunity_teams_message(
     webhook_url: str, display_name: str, ref: str, title: str, buyer: str | None,
     deadline: str | None, app_url: str, notice_id: int,
