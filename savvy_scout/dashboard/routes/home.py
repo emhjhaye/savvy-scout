@@ -156,12 +156,17 @@ def _build_scope_predicate(conn):
 
 
 def _new_perf_bucket(weekdays):
-    return {"days": {d: 0 for d in weekdays}, "week": 0, "month": 0, "ytd": 0}
+    return {"days": {d: 0 for d in weekdays}, "last_week": 0, "week": 0, "month": 0, "ytd": 0}
 
 
-def _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start):
+def _accumulate_perf(
+    bucket, report_date, weekdays, week_start, week_end, month_start, year_start,
+    last_week_start=None, last_week_end=None,
+):
     if report_date in bucket["days"]:
         bucket["days"][report_date] += 1
+    if last_week_start is not None and last_week_start <= report_date <= last_week_end:
+        bucket["last_week"] += 1
     if week_start <= report_date <= week_end:
         bucket["week"] += 1
     if report_date >= month_start:
@@ -174,6 +179,7 @@ def _perf_row(label, bucket, weekdays, **extra):
     return {
         "sector": label,
         "days": [bucket["days"][d] for d in weekdays],
+        "last_week": bucket["last_week"],
         "week": bucket["week"],
         "month": bucket["month"],
         "ytd": bucket["ytd"],
@@ -199,9 +205,11 @@ def _perf_windows(now_uk: datetime):
     week_start = today - timedelta(days=(now_uk.weekday() - 5) % 7)
     week_end = week_start + timedelta(days=6)
     weekdays = [week_start + timedelta(days=i) for i in range(7)]
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start - timedelta(days=1)
     month_start = today.replace(day=1)
     year_start = today.replace(month=1, day=1)
-    return weekdays, week_start, week_end, month_start, year_start
+    return weekdays, week_start, week_end, month_start, year_start, last_week_start, last_week_end
 
 
 def _day_headers(weekdays):
@@ -216,7 +224,7 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
     also counts) and "Total Swept" (every notice pulled, matched to a sector
     or not) -- comparing the two shows how much of the raw sweep volume
     actually lands in-scope."""
-    weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
+    weekdays, week_start, week_end, month_start, year_start, last_week_start, last_week_end = _perf_windows(now_uk)
 
     predicate = _build_scope_predicate(conn)
     rows = conn.execute(
@@ -245,12 +253,21 @@ def _build_sector_performance(conn, now_uk: datetime) -> dict:
         report_date = _report_date(row)
         if report_date is None:
             continue
-        _accumulate_perf(swept_total, report_date, weekdays, week_start, week_end, month_start, year_start)
+        _accumulate_perf(
+            swept_total, report_date, weekdays, week_start, week_end, month_start, year_start,
+            last_week_start, last_week_end,
+        )
 
         if is_in_scope:
-            _accumulate_perf(in_scope_total, report_date, weekdays, week_start, week_end, month_start, year_start)
+            _accumulate_perf(
+                in_scope_total, report_date, weekdays, week_start, week_end, month_start, year_start,
+                last_week_start, last_week_end,
+            )
             bucket = sector_buckets[row["sector"]]
-            _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start)
+            _accumulate_perf(
+                bucket, report_date, weekdays, week_start, week_end, month_start, year_start,
+                last_week_start, last_week_end,
+            )
 
     perf_rows = [
         _perf_row(sector, bucket, weekdays)
@@ -456,7 +473,7 @@ def _build_source_performance(conn, now_uk: datetime) -> dict:
     date. Unfiltered by sector/CPV scope -- this is about sweep coverage per
     source, not what's in scope, so it should total to the same "Total
     Swept" figure Sector Performance shows."""
-    weekdays, week_start, week_end, month_start, year_start = _perf_windows(now_uk)
+    weekdays, week_start, week_end, month_start, year_start, last_week_start, last_week_end = _perf_windows(now_uk)
 
     rows = conn.execute(
         "SELECT source, first_published_at, published_at, first_seen_at, publish_date_unknown FROM notices"
@@ -475,8 +492,14 @@ def _build_source_performance(conn, now_uk: datetime) -> dict:
         report_date = _report_date(row)
         if report_date is None:
             continue
-        _accumulate_perf(grand_total, report_date, weekdays, week_start, week_end, month_start, year_start)
-        _accumulate_perf(bucket, report_date, weekdays, week_start, week_end, month_start, year_start)
+        _accumulate_perf(
+            grand_total, report_date, weekdays, week_start, week_end, month_start, year_start,
+            last_week_start, last_week_end,
+        )
+        _accumulate_perf(
+            bucket, report_date, weekdays, week_start, week_end, month_start, year_start,
+            last_week_start, last_week_end,
+        )
 
     perf_rows = [
         _perf_row(source, bucket, weekdays)

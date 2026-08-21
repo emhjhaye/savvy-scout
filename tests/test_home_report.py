@@ -284,7 +284,7 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     seed_all(setup_conn)
 
     now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
-    weekdays, week_start, _, _, _ = _perf_windows(now_uk)
+    weekdays, week_start, _, _, _, _, _ = _perf_windows(now_uk)
     sunday = weekdays[1]
 
     _insert_notice_with_publish_dates(
@@ -307,6 +307,64 @@ def test_weekend_published_notice_gets_its_own_day_column(tmp_path):
     assert swept_total_row["days"][:1] + swept_total_row["days"][2:] == [0, 0, 0, 0, 0, 0]
     assert source_row["days"][1] == 1
     assert swept_total_row["week"] == 1
+
+
+def test_last_week_total_column(tmp_path):
+    """Explicit request (2026-08-19): a "Last week" total at the start of
+    Sector/Source Performance, so last week's figure stays visible for
+    comparison instead of only this week's in-progress total."""
+    from zoneinfo import ZoneInfo
+
+    from savvy_scout.dashboard.routes.home import _build_sector_performance, _build_source_performance, _perf_windows
+
+    db_path = str(tmp_path / "test.db")
+    setup_conn = get_connection(db_path)
+    init_db(setup_conn)
+    seed_all(setup_conn)
+
+    now_uk = datetime.now(timezone.utc).astimezone(ZoneInfo("Europe/London"))
+    _, week_start, _, _, _, last_week_start, last_week_end = _perf_windows(now_uk)
+
+    def _at(day, hour=12):
+        return datetime.combine(day, datetime.min.time(), tzinfo=now_uk.tzinfo) + timedelta(hours=hour)
+
+    # Two notices last week, one this week, one three weeks ago -- only the
+    # two from last week should land in "last_week".
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-LASTWEEK-1",
+        first_seen_at=_at(last_week_start).isoformat(),
+        first_published_at=_at(last_week_start).isoformat(),
+        published_at=_at(last_week_start).isoformat(),
+    )
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-LASTWEEK-2",
+        first_seen_at=_at(last_week_end).isoformat(),
+        first_published_at=_at(last_week_end).isoformat(),
+        published_at=_at(last_week_end).isoformat(),
+    )
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-THISWEEK",
+        first_seen_at=_at(week_start).isoformat(),
+        first_published_at=_at(week_start).isoformat(),
+        published_at=_at(week_start).isoformat(),
+    )
+    _insert_notice_with_publish_dates(
+        setup_conn, "REF-OLD",
+        first_seen_at=_at(last_week_start - timedelta(days=14)).isoformat(),
+        first_published_at=_at(last_week_start - timedelta(days=14)).isoformat(),
+        published_at=_at(last_week_start - timedelta(days=14)).isoformat(),
+    )
+    setup_conn.commit()
+
+    sector_perf = _build_sector_performance(setup_conn, now_uk)
+    source_perf = _build_source_performance(setup_conn, now_uk)
+    setup_conn.close()
+
+    swept_total_row = next(r for r in sector_perf["rows"] if r["sector"] == "Total Swept (all sources)")
+    source_row = next(r for r in source_perf["rows"] if r["sector"] == "Find a Tender")
+    assert swept_total_row["last_week"] == 2
+    assert swept_total_row["week"] == 1
+    assert source_row["last_week"] == 2
 
 
 def _set_status_via_history(conn, ref: str, from_status: str | None, to_status: str, changed_by: str) -> None:

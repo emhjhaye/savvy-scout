@@ -159,6 +159,7 @@
           <thead>
             <tr>
               <th>Sector</th>
+              <th>Last week</th>
               {% for day in sector_performance.day_headers %}
               <th title="{{ day.date }}">{{ day.label }}</th>
               {% endfor %}
@@ -176,6 +177,7 @@
                   {{ row.sector }}
                 </span>
               </td>
+              <td>{{ row.last_week }}</td>
               {% for count in row.days %}
               <td>{{ count }}</td>
               {% endfor %}
@@ -224,6 +226,7 @@
         <thead>
           <tr>
             <th>Source</th>
+            <th>Last week</th>
             {% for day in source_performance.day_headers %}
             <th title="{{ day.date }}">{{ day.label }}</th>
             {% endfor %}
@@ -241,6 +244,7 @@
                 {{ row.sector }}
               </span>
             </td>
+            <td>{{ row.last_week }}</td>
             {% for count in row.days %}
             <td>{{ count }}</td>
             {% endfor %}
